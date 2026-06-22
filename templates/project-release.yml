@@ -1,0 +1,84 @@
+name: Release Build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: Release version (v1.0.0)
+
+permissions:
+  contents: write
+
+env:
+  NPM_FLAGS: --prefer-offline --no-audit --legacy-peer-deps
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.VERSION }}
+    steps:
+      - id: v
+        run: |
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          [[ "$V" != v* ]] && V="v$V"
+          echo "VERSION=$V" >> $GITHUB_OUTPUT
+
+  build-release:
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: storefront
+            node: 20
+            dir: storefront
+          - app: backend
+            node: 20
+            dir: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Build storefront
+        if: matrix.app == 'storefront'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          npm install $NPM_FLAGS
+          npm run build
+
+      - name: Build backend
+        if: matrix.app == 'backend'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          npm install $NPM_FLAGS
+          npm run build
+
+      - name: Package
+        run: |
+          V=${{ needs.resolve.outputs.version }}
+          D=${{ matrix.app }}-$V
+          mkdir $D
+          if [ "${{ matrix.app }}" = "storefront" ]; then
+            cp -r ${{ matrix.dir }}/.generated-app/.next $D/.next 2>/dev/null || cp -r ${{ matrix.dir }}/.next $D/.next
+            cp -r ${{ matrix.dir }}/public $D/ 2>/dev/null || true
+            cp ${{ matrix.dir }}/package.json $D/
+          else
+            cp -r ${{ matrix.dir }}/.generated-backend/.medusa $D/.medusa 2>/dev/null || cp -r ${{ matrix.dir }}/.medusa $D/.medusa
+            cp ${{ matrix.dir }}/package.json $D/
+          fi
+          tar -czf $D.tar.gz $D
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.version }}
+          name: Release ${{ needs.resolve.outputs.version }}
+          files: ${{ matrix.app }}-${{ needs.resolve.outputs.version }}.tar.gz

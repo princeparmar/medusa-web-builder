@@ -1,0 +1,65 @@
+name: Database
+
+on:
+  pull_request:
+    paths:
+      - "packages/db/prisma/**"
+      - "scripts/db.mjs"
+  push:
+    branches: [main]
+    paths:
+      - "packages/db/prisma/**"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mwb
+          POSTGRES_PASSWORD: mwb
+          POSTGRES_DB: medusa_web_builder_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mwb -d medusa_web_builder_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgresql://mwb:mwb@localhost:5432/medusa_web_builder_test
+        run: pnpm db:migrate:deploy
+
+      - name: Verify migration status
+        env:
+          DATABASE_URL: postgresql://mwb:mwb@localhost:5432/medusa_web_builder_test
+        run: pnpm db:migrate:status
+
+      - name: Check schema drift
+        env:
+          DATABASE_URL: postgresql://mwb:mwb@localhost:5432/medusa_web_builder_test
+        run: |
+          DIFF=$(node scripts/db.mjs diff 2>/dev/null || true)
+          if echo "$DIFF" | grep -q "ALTER\|CREATE"; then
+            echo "Schema drift detected — run pnpm db:migrate and commit the migration:"
+            echo "$DIFF"
+            exit 1
+          fi
+          echo "No schema drift"

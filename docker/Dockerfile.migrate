@@ -1,0 +1,18 @@
+FROM node:20-alpine
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/db/package.json ./packages/db/
+COPY scripts/db.mjs ./scripts/db.mjs
+COPY scripts/docker-migrate.sh ./scripts/docker-migrate.sh
+COPY packages/db/prisma ./packages/db/prisma
+
+RUN pnpm install --filter @mwb/db --ignore-scripts --frozen-lockfile 2>/dev/null || pnpm install --filter @mwb/db --ignore-scripts
+WORKDIR /app/packages/db
+RUN pnpm exec prisma generate --schema prisma/schema.prisma
+WORKDIR /app
+RUN chmod +x scripts/docker-migrate.sh
+
+ENV NODE_ENV=production
+CMD ["./scripts/docker-migrate.sh"]

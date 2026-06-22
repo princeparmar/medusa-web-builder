@@ -1,0 +1,275 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OnboardingStep {
+  REGISTERED
+  PROFILE_COMPLETE
+  PROJECT_CREATED
+  COMPLETE
+}
+
+enum ProjectStatus {
+  SCAFFOLDING
+  READY
+  ERROR
+}
+
+enum ProjectRole {
+  OWNER
+  MANAGER
+  DEVELOPER
+  VIEWER
+}
+
+enum DeploymentStatus {
+  PENDING
+  BUILDING
+  DEPLOYING
+  LIVE
+  FAILED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String
+  name            String?
+  companyName     String?
+  defaultRegion   String         @default("in")
+  logoUrl         String?
+  emailVerified   DateTime?
+  onboardingStep  OnboardingStep @default(REGISTERED)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  memberships     ProjectMember[]
+  invitesSent     ProjectInvite[] @relation("InvitedBy")
+  auditLogs       AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id            String        @id @default(uuid())
+  slug          String        @unique
+  name          String
+  preset        String        @default("full")
+  status        ProjectStatus @default(SCAFFOLDING)
+  githubRepo    String?
+  githubRepoId  Int?
+  workspacePath String?
+  errorMessage  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  members       ProjectMember[]
+  invites       ProjectInvite[]
+  drafts        Draft[]
+  deployments   Deployment[]
+  secrets       ProjectSecret?
+  assets        Asset[]
+  auditLogs     AuditLog[]
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(DEVELOPER)
+  createdAt DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model ProjectInvite {
+  id          String       @id @default(uuid())
+  projectId   String
+  email       String
+  role        ProjectRole  @default(DEVELOPER)
+  token       String       @unique @default(uuid())
+  status      InviteStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime     @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([projectId, email])
+}
+
+model Draft {
+  id                  String   @id @default(uuid())
+  projectId           String
+  name                String
+  gitBranch           String
+  baseBranch          String   @default("main")
+  lastCommitSha       String?
+  pagesConfigSnapshot Json?
+  isActive            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, gitBranch])
+}
+
+model Deployment {
+  id            String           @id @default(uuid())
+  projectId     String
+  tag           String
+  status        DeploymentStatus @default(PENDING)
+  releaseUrl    String?
+  k8sReleaseId  String?
+  releaseNotes  String?
+  errorMessage  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, tag])
+}
+
+model SectionRegistry {
+  id                 String   @id @default(uuid())
+  packageName        String   @unique
+  displayName        String
+  githubRepo         String?
+  version            String   @default("0.1.0")
+  latestVersion      String?
+  componentType      String   @default("segment")
+  category           String?
+  description        String?
+  manifestJson       Json
+  settingsSchemaJson Json?
+  pageTypes          String[]
+  isBuiltin          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model SectionSource {
+  id          String   @id @default(uuid())
+  githubRepo  String   @unique
+  branch      String   @default("main")
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PluginSource {
+  id          String   @id @default(uuid())
+  githubRepo  String   @unique
+  branch      String   @default("main")
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PluginRegistry {
+  id                 String   @id @default(uuid())
+  packageName        String   @unique
+  displayName        String
+  githubRepo         String
+  version            String
+  latestVersion      String?
+  description        String?
+  medusaResolve      String
+  settingsSchemaJson Json?
+  isBuiltin          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ProjectSecret {
+  id                  String   @id @default(uuid())
+  projectId           String   @unique
+  encryptedAdminToken String?
+  encryptedPublishableKey String?
+  backendUrl          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id            String   @id @default(uuid())
+  projectId     String
+  medusaFileUrl String
+  filename      String
+  mimeType      String
+  sizeBytes     Int?
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  projectId String?
+  action    String
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+}

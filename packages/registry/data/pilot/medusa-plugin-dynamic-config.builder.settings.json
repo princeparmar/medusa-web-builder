@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "fields": [
+    { "id": "configs", "type": "object", "label": "Configuration Schema", "group": "config" }
+  ],
+  "groups": [{ "id": "config", "label": "Configuration" }]
+}

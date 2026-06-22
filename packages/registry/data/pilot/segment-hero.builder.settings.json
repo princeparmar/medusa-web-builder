@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "fields": [
+    { "id": "variant", "type": "select", "label": "Layout", "options": ["overlay", "split", "centered"], "default": "overlay", "group": "layout" },
+    { "id": "homeBanner.title", "type": "short-text", "label": "Home Banner Title", "group": "content" },
+    { "id": "homeBanner.subtitle", "type": "short-text", "label": "Home Banner Subtitle", "group": "content" },
+    { "id": "homeBanner.description", "type": "long-text", "label": "Home Banner Description", "group": "content" },
+    { "id": "homeBanner.image", "type": "image", "label": "Home Banner Image", "group": "content" },
+    { "id": "homeBanner.buttonName", "type": "short-text", "label": "Button Text", "group": "content" },
+    { "id": "homeBanner.buttonLink", "type": "short-text", "label": "Button Link", "group": "content" }
+  ],
+  "groups": [{ "id": "layout", "label": "Layout" }, { "id": "content", "label": "Content" }],
+  "inherits": ["brand.colors", "brand.logoUrl"]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "medusa-web-builder",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "dev:web": "pnpm --filter @mwb/web dev",
+    "dev:worker": "pnpm --filter @mwb/worker dev",
+    "build": "pnpm -r build",
+    "db": "node scripts/db.mjs",
+    "db:generate": "node scripts/db.mjs generate",
+    "db:migrate": "node scripts/db.mjs migrate dev",
+    "db:migrate:create": "node scripts/db.mjs migrate dev --create-only",
+    "db:migrate:deploy": "node scripts/db.mjs migrate deploy",
+    "db:migrate:status": "node scripts/db.mjs migrate status",
+    "db:migrate:reset": "node scripts/db.mjs migrate reset",
+    "db:migrate:diff": "node scripts/db.mjs diff",
+    "db:push": "node scripts/db.mjs push",
+    "db:studio": "node scripts/db.mjs studio",
+    "postinstall": "pnpm db:generate",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

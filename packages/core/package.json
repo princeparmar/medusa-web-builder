@@ -1,0 +1,43 @@
+{
+  "name": "@mwb/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./github": "./src/github/index.ts",
+    "./github/actions-config": "./src/github/actions-config.ts",
+    "./git": "./src/git/index.ts",
+    "./scaffold": "./src/scaffold/index.ts",
+    "./config": "./src/config/index.ts",
+    "./crypto": "./src/crypto/index.ts",
+    "./queue": "./src/queue/index.ts",
+    "./rbac": "./src/rbac/index.ts",
+    "./email": "./src/email/index.ts",
+    "./audit": "./src/audit/index.ts",
+    "./builder-config/write": "./src/builder-config/write.ts",
+    "./builder-config/bindings": "./src/builder-config/bindings.ts"
+  },
+  "dependencies": {
+    "@mwb/db": "workspace:*",
+    "@octokit/auth-app": "^7.1.4",
+    "@octokit/rest": "^21.1.0",
+    "bullmq": "^5.34.8",
+    "ioredis": "^5.4.2",
+    "nodemailer": "^6.9.16",
+    "simple-git": "^3.27.0",
+    "tweetsodium": "^0.0.4",
+    "zod": "^3.24.1"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/nodemailer": "^6.4.17",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

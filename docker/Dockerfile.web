@@ -1,0 +1,35 @@
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY packages/db/package.json ./packages/db/
+COPY packages/core/package.json ./packages/core/
+COPY packages/registry/package.json ./packages/registry/
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --ignore-scripts --frozen-lockfile 2>/dev/null || pnpm install --ignore-scripts
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm install --ignore-scripts
+WORKDIR /app/packages/db
+RUN pnpm exec prisma generate --schema prisma/schema.prisma
+WORKDIR /app
+RUN pnpm --filter @mwb/web build
+RUN PRISMA_CLIENT_DIR="$(find node_modules/.pnpm -path '*@prisma+client*/node_modules/.prisma/client' -type d | head -1)" \
+  && mkdir -p /prisma-client \
+  && cp -r "$PRISMA_CLIENT_DIR"/. /prisma-client/
+
+FROM base AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /prisma-client ./node_modules/.prisma/client
+RUN mkdir -p ./apps/web/public
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+CMD ["node", "apps/web/server.js"]

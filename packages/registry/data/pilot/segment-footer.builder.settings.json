@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "fields": [
+    { "id": "copyright", "type": "short-text", "label": "Copyright Text", "group": "content" }
+  ],
+  "inherits": ["brand.companyName"]
+}
