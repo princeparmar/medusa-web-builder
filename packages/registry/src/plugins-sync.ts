@@ -10,6 +10,12 @@ import {
   packageToPluginDisplayName,
   type PluginCatalogEntry,
 } from "./plugins-catalog"
+import { mergePluginSettings } from "./settings-merge"
+import {
+  syncProviderFromPackageDir,
+  syncProviderFromGithubPackage,
+  syncProvidersCatalogToDb,
+} from "./providers-sync"
 
 type GithubContentEntry = { name: string; type: string; path: string }
 
@@ -169,12 +175,15 @@ export async function syncPluginsCatalogToDb(): Promise<number> {
 
 export async function syncPluginsFromPath(pluginsPath: string): Promise<number> {
   if (!existsSync(pluginsPath)) {
+    await syncProvidersCatalogToDb()
     return syncPluginsCatalogToDb()
   }
 
   const entries = await readdir(pluginsPath)
   let count = 0
   const githubRepo = process.env.MEDUSA_PLUGINS_GITHUB ?? DEFAULT_MEDUSA_PLUGINS_REPO
+
+  await syncProvidersCatalogToDb()
 
   for (const entry of entries) {
     const pkgDir = join(pluginsPath, entry)
@@ -191,11 +200,19 @@ export async function syncPluginsFromPath(pluginsPath: string): Promise<number> 
     const description =
       (pkg.description as string) ?? catalog?.description ?? `${packageName} Medusa plugin`
 
-    let settings: unknown = catalog?.settings ?? { version: "1", fields: [] }
+    let settings: unknown = { version: "1", fields: [] }
     const settingsPath = join(pkgDir, "builder.settings.json")
     if (existsSync(settingsPath)) {
       settings = BuilderSettingsSchema.parse(JSON.parse(await readFile(settingsPath, "utf8")))
     }
+    settings = mergePluginSettings(packageName, settings as import("./schemas").BuilderSettings)
+
+    await syncProviderFromPackageDir({
+      pkgDir,
+      packageName,
+      githubRepo,
+      isBuiltin: true,
+    })
 
     await prisma.pluginRegistry.upsert({
       where: { packageName },
@@ -229,6 +246,7 @@ export async function syncDefaultPlugins(): Promise<number> {
   if (path && existsSync(path)) {
     return syncPluginsFromPath(path)
   }
+  await syncProvidersCatalogToDb()
   return syncPluginsCatalogToDb()
 }
 
@@ -241,6 +259,8 @@ export async function syncPluginsFromGithub(
   const packagePaths = await listGithubPluginPaths(owner, repo, branch)
   let count = 0
 
+  await syncProvidersCatalogToDb()
+
   for (const packagePath of packagePaths) {
     const pkg = await fetchGithubPackageJson(owner, repo, packagePath, branch)
     if (!pkg?.name) continue
@@ -249,10 +269,23 @@ export async function syncPluginsFromGithub(
     const version = pkg.version ?? catalog?.version ?? "0.0.1"
     const description =
       pkg.description ?? catalog?.description ?? `${pkg.name} Medusa plugin`
-    const settings =
-      (await fetchGithubBuilderSettings(owner, repo, packagePath, branch)) ??
-      catalog?.settings ??
-      { version: "1", fields: [] }
+    const repoSettings = await fetchGithubBuilderSettings(owner, repo, packagePath, branch)
+    const settings = mergePluginSettings(
+      pkg.name,
+      (repoSettings ??
+        (catalog?.settings as import("./schemas").BuilderSettings | null) ??
+        { version: "1", fields: [] }) as import("./schemas").BuilderSettings
+    )
+
+    await syncProviderFromGithubPackage({
+      owner,
+      repo,
+      packagePath,
+      branch,
+      packageName: pkg.name,
+      githubRepo,
+      isBuiltin,
+    })
 
     await upsertPluginFromPackage({
       packageName: pkg.name,

@@ -9,8 +9,8 @@ import {
   type ModulesConfigFile,
 } from "../builder-config/index"
 import type { BuilderSettings } from "../builder-config/types"
-import type { BuilderBindingsFile } from "../builder-config/bindings"
-import { emptyBindingsFile } from "../builder-config/bindings"
+import type { BuilderBindingsFile } from "./bindings"
+import { emptyBindingsFile } from "./bindings"
 import { readProjectFile, writeProjectFile } from "../config/index"
 import { readBrandConfig } from "../scaffold/index"
 
@@ -105,7 +105,11 @@ export {
   suggestEnvName,
   flattenBindingsForForm,
   emptyBindingsFile,
+  decompileOptionsToForm,
+  hydrateConfigFormState,
+  allowedStorageForField,
+  countMissingRequiredFields,
   type FieldBinding,
   type FieldStorage,
   type BuilderBindingsFile,
-} from "../builder-config/bindings"
+} from "./bindings"

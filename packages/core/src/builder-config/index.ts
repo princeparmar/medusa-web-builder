@@ -40,18 +40,28 @@ export function setNestedValue(
   cur[parts[parts.length - 1]] = value
 }
 
-/** Merge schema defaults into flat field values (dot-notation ids). */
+/** Merge schema field defaults and optional `defaults` block into flat field values (dot-notation ids). */
 export function applySchemaDefaults(
   schema: BuilderSettings | null | undefined,
   values: Record<string, unknown>
 ): Record<string, unknown> {
-  if (!schema?.fields?.length) return { ...values }
+  if (!schema) return { ...values }
   const out = { ...values }
-  for (const field of schema.fields) {
+
+  for (const field of schema.fields ?? []) {
     if (out[field.id] === undefined && field.default !== undefined) {
       out[field.id] = field.default
     }
   }
+
+  if (schema.defaults) {
+    for (const [key, value] of Object.entries(schema.defaults)) {
+      if (out[key] === undefined) {
+        out[key] = value
+      }
+    }
+  }
+
   return out
 }
 
@@ -131,6 +141,15 @@ export function compileBuilderConfig(params: {
     }
   }
 
+  const layoutShellPackages = [
+    "@pradip1995/segment-nav",
+    "@pradip1995/segment-footer",
+    "@pradip1995/segment-promo-bar",
+  ]
+  for (const pkg of layoutShellPackages) {
+    if (sectionProps[pkg] !== undefined) usedPackages.add(pkg)
+  }
+
   const segments: Record<string, Record<string, unknown>> = {}
   const data: Record<string, Record<string, unknown>> = {}
 
@@ -143,6 +162,13 @@ export function compileBuilderConfig(params: {
 
     const dataKey =
       meta?.dataKey ??
+      (packageName === "@pradip1995/segment-nav"
+        ? "nav"
+        : packageName === "@pradip1995/segment-footer"
+          ? "footer"
+          : packageName === "@pradip1995/segment-promo-bar"
+            ? "promoBar"
+            : undefined) ??
       (meta?.settingsSchema ? undefined : packageName.split("/").pop()?.replace(/^segment-/, ""))
 
     const key =

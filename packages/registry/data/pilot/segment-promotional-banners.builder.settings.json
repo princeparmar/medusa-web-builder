@@ -1,7 +1,0 @@
-{
-  "version": "1",
-  "fields": [
-    { "id": "banners", "type": "array", "label": "Banners", "group": "content" }
-  ],
-  "groups": [{ "id": "content", "label": "Content" }]
-}

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
+import { prisma } from "@mwb/db"
 import { requireProjectAccess } from "@/lib/auth-helpers"
 import { enqueueProjectJob } from "@mwb/core/queue"
-import { githubCredentialsConfigured } from "@mwb/core/github"
+import { getGithubInstallationStatus } from "@mwb/core/github"
 import { logAudit } from "@mwb/core/audit"
 
 export async function GET(
@@ -13,10 +14,14 @@ export async function GET(
   if (error) return error
 
   const project = membership!.project
-  const configured = githubCredentialsConfigured()
+  const installation = await getGithubInstallationStatus()
 
   return NextResponse.json({
-    configured,
+    configured: installation.configured,
+    installed: installation.installed,
+    installUrl: installation.installUrl,
+    availableInstallations: installation.availableInstallations,
+    installationError: installation.error ?? null,
     linked: !!project.githubRepoId,
     githubRepo: project.githubRepo,
     githubRepoId: project.githubRepoId,
@@ -34,11 +39,25 @@ export async function POST(
   const { error, session, membership } = await requireProjectAccess(id, "project:edit")
   if (error) return error
 
-  if (!githubCredentialsConfigured()) {
+  const installation = await getGithubInstallationStatus()
+
+  if (!installation.configured) {
     return NextResponse.json(
       {
         error: "GitHub App not configured",
-        hint: "Set GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY in .env, install the app on medusa-storefronts, then restart the worker.",
+        hint: "Set GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY in .env, then restart web and worker containers.",
+      },
+      { status: 503 }
+    )
+  }
+
+  if (!installation.installed) {
+    return NextResponse.json(
+      {
+        error: installation.error ?? "GitHub App not installed on the target organization",
+        hint: `Install the app on org "${installation.org}" from GitHub → Organization settings → GitHub Apps.`,
+        installUrl: installation.installUrl,
+        availableInstallations: installation.availableInstallations,
       },
       { status: 503 }
     )
@@ -57,6 +76,11 @@ export async function POST(
     { projectId: id, userId: session!.user.id },
     `github-provision-${id}-${Date.now()}`
   )
+
+  await prisma.project.update({
+    where: { id },
+    data: { errorMessage: null },
+  })
 
   await logAudit({
     userId: session!.user.id,

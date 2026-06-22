@@ -1,17 +1,16 @@
-import { pilotSettingsForPackage } from "./pilot-settings"
+import { isLayoutShellPackage, stripLayoutShells } from "./layout-shell"
+import type { SectionCategory } from "./catalog-labels"
+import {
+  ROUTE_CATEGORY,
+  CATEGORY_LABELS,
+  PAGE_ROUTE_LABELS,
+} from "./catalog-labels"
+
+export { isLayoutShellPackage, stripLayoutShells }
+export type { SectionCategory }
+export { ROUTE_CATEGORY, CATEGORY_LABELS, PAGE_ROUTE_LABELS }
 
 export type ComponentType = "segment" | "layout"
-export type SectionCategory =
-  | "home"
-  | "store"
-  | "product"
-  | "cart"
-  | "checkout"
-  | "account"
-  | "orders"
-  | "global"
-  | "layout"
-  | "custom"
 
 export type SectionCatalogEntry = {
   packageName: string
@@ -29,31 +28,6 @@ export type SectionCatalogEntry = {
 
 export const DEFAULT_STOREFRONT_COMPONENTS_REPO =
   "https://github.com/pradip1995/storefront-components"
-
-export const ROUTE_CATEGORY: Record<string, SectionCategory> = {
-  "/": "home",
-  "/store": "store",
-  "/products/[handle]": "product",
-  "/cart": "cart",
-  "/checkout": "checkout",
-  "/account": "account",
-  "/wishlist": "account",
-  "/help": "account",
-  "/orders/[id]": "orders",
-}
-
-export const CATEGORY_LABELS: Record<SectionCategory, string> = {
-  home: "Home page sections",
-  store: "Store & listing",
-  product: "Product detail",
-  cart: "Cart",
-  checkout: "Checkout",
-  account: "Account & auth",
-  orders: "Orders",
-  global: "Global (all pages)",
-  layout: "Layout shells",
-  custom: "Custom repo",
-}
 
 function kebabToCamel(value: string): string {
   return value.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
@@ -81,12 +55,6 @@ function seg(
     latestVersion: latestVersion ?? version,
     githubRepo: DEFAULT_STOREFRONT_COMPONENTS_REPO,
     manifest: { id, type: "segment", version, dataKey: kebabToCamel(id) },
-    settings:
-      pilotSettingsForPackage(packageName) ?? {
-        version: "1",
-        fields: [{ id: "title", type: "short-text", label: "Section title", group: "content" }],
-        groups: [{ id: "content", label: "Content" }],
-      },
   }
 }
 
@@ -110,15 +78,6 @@ function layout(
     latestVersion: version,
     githubRepo: DEFAULT_STOREFRONT_COMPONENTS_REPO,
     manifest: { id, type: "layout", version },
-    settings:
-      pilotSettingsForPackage(packageName) ?? {
-        version: "1",
-        fields: [
-          { id: "showNav", type: "boolean", label: "Show navigation", default: true, group: "layout" },
-          { id: "showFooter", type: "boolean", label: "Show footer", default: true, group: "layout" },
-        ],
-        groups: [{ id: "layout", label: "Layout" }],
-      },
   }
 }
 
@@ -132,8 +91,7 @@ export const SECTION_CATALOG: SectionCatalogEntry[] = [
   layout("layout-account", "Account layout", "Account area layout with sidebar", ["/account", "/orders/[id]"]),
 
   // Global
-  {
-    ...seg("segment-nav", "Navigation", "global", [
+  seg("segment-nav", "Navigation", "global", [
       "/",
       "/store",
       "/products/[handle]",
@@ -144,18 +102,7 @@ export const SECTION_CATALOG: SectionCatalogEntry[] = [
       "/help",
       "/orders/[id]",
     ], "Top navigation bar with logo and menu"),
-    settings: {
-      version: "1",
-      fields: [
-        { id: "logoUrl", type: "image", label: "Logo", group: "brand" },
-        { id: "logoUrlLight", type: "image", label: "Logo (light)", group: "brand" },
-      ],
-      groups: [{ id: "brand", label: "Brand" }],
-      inherits: ["brand.logoUrl"],
-    },
-  },
-  {
-    ...seg("segment-footer", "Footer", "global", [
+  seg("segment-footer", "Footer", "global", [
       "/",
       "/store",
       "/products/[handle]",
@@ -166,33 +113,9 @@ export const SECTION_CATALOG: SectionCatalogEntry[] = [
       "/help",
       "/orders/[id]",
     ], "Site footer with links and copyright"),
-    settings: {
-      version: "1",
-      fields: [{ id: "copyright", type: "short-text", label: "Copyright text", group: "content" }],
-      inherits: ["brand.companyName"],
-    },
-  },
 
   // Home
-  {
-    ...seg("segment-hero", "Hero", "home", ["/"], "Homepage hero banner with CTA"),
-    settings: {
-      version: "1",
-      fields: [
-        { id: "variant", type: "select", label: "Layout", options: ["overlay", "split", "centered"], default: "overlay", group: "layout" },
-        { id: "homeBanner.title", type: "short-text", label: "Title", group: "content" },
-        { id: "homeBanner.subtitle", type: "short-text", label: "Subtitle", group: "content" },
-        { id: "homeBanner.image", type: "image", label: "Banner image", group: "content" },
-        { id: "homeBanner.buttonName", type: "short-text", label: "Button text", group: "content" },
-        { id: "homeBanner.buttonLink", type: "short-text", label: "Button link", group: "content" },
-      ],
-      groups: [
-        { id: "layout", label: "Layout" },
-        { id: "content", label: "Content" },
-      ],
-      inherits: ["brand.colors", "brand.logoUrl"],
-    },
-  },
+  seg("segment-hero", "Hero", "home", ["/"], "Homepage hero banner with CTA"),
   seg("segment-shop-by-category", "Shop by Category", "home", ["/"], "Category tiles on the homepage"),
   seg("segment-new-arrivals", "New Arrivals", "home", ["/"], "Latest products carousel"),
   seg("segment-promotional-banners", "Promotional Banners", "home", ["/"], "Marketing banner grid"),
@@ -230,18 +153,6 @@ export const SECTION_CATALOG: SectionCatalogEntry[] = [
   // Orders
   seg("segment-order-details", "Order Details", "orders", ["/orders/[id]"], "Single order view"),
 ]
-
-export const PAGE_ROUTE_LABELS: Record<string, string> = {
-  "/": "Home",
-  "/store": "Store",
-  "/products/[handle]": "Product detail",
-  "/cart": "Cart",
-  "/checkout": "Checkout",
-  "/account": "Account",
-  "/wishlist": "Wishlist",
-  "/help": "Help",
-  "/orders/[id]": "Order detail",
-}
 
 export function packageToDisplayName(packageName: string): string {
   return packageName

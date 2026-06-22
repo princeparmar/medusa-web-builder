@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { CATEGORY_LABELS, PAGE_ROUTE_LABELS, ROUTE_CATEGORY } from "@mwb/registry/catalog"
+import { CATEGORY_LABELS, PAGE_ROUTE_LABELS, ROUTE_CATEGORY } from "@mwb/registry/catalog-labels"
+import { isLayoutShellPackage } from "@mwb/registry/layout-shell"
 
 export type RegistrySection = {
   packageName: string
@@ -26,7 +27,6 @@ type RegistryResponse = {
 }
 
 const CATEGORY_ORDER = [
-  "layout",
   "home",
   "store",
   "product",
@@ -34,9 +34,12 @@ const CATEGORY_ORDER = [
   "checkout",
   "account",
   "orders",
-  "global",
   "custom",
 ]
+
+function isPageSection(s: RegistrySection): boolean {
+  return s.componentType !== "layout" && !isLayoutShellPackage(s.packageName)
+}
 
 export function ComponentPalette({
   projectId,
@@ -124,13 +127,10 @@ export function ComponentPalette({
 
   const pageCategory = ROUTE_CATEGORY[activeRoute]
   const pageLabel = PAGE_ROUTE_LABELS[activeRoute] ?? activeRoute
-  const displaySections = tab === "all" ? allSections : sections
+  const displaySections = (tab === "all" ? allSections : sections).filter(isPageSection)
 
   const grouped = displaySections.reduce<Record<string, RegistrySection[]>>((acc, s) => {
-    const key =
-      tab === "page" && s.componentType === "layout"
-        ? "layout"
-        : (s.category ?? "custom")
+    const key = s.category ?? "custom"
     if (!acc[key]) acc[key] = []
     acc[key].push(s)
     return acc

@@ -23,12 +23,15 @@ if (process.env.WORKSPACE_ROOT && !process.env.WORKSPACE_ROOT.startsWith("/")) {
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@mwb/db", "@mwb/core", "@mwb/registry"],
+  experimental: {
+    externalDir: true,
+  },
   output: "standalone",
   outputFileTracingRoot: join(dirname(fileURLToPath(import.meta.url)), "../.."),
   outputFileTracingIncludes: {
     "/*": ["../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/**/*"],
   },
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "react-dom"],
 }
 
 export default nextConfig

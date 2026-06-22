@@ -11,7 +11,7 @@
 #   deploy   — trigger (after GitHub release webhook → K8s / deploy stub)
 #
 # GitHub App credentials (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY) must be in ../.env.
-# The worker reads them for repo creation, git push, tags, and publish.
+# Loaded via env_file only — do NOT add GITHUB_APP_* to the environment: block (empty ${VAR:-} overrides env_file).
 
 services:
   postgres:
@@ -102,6 +102,7 @@ services:
       GITHUB_ORG: medusa-storefronts
       WORKSPACE_ROOT: /var/builder/workspaces
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-32-chars-min!!}
+      STOREFRONT_COMPONENTS_PATH: ${STOREFRONT_COMPONENTS_PATH:-}
     volumes:
       - workspaces:/var/builder/workspaces
     depends_on:
@@ -133,7 +134,9 @@ services:
       SMTP_PORT: 1025
       # Registry sync (paths optional; falls back to GitHub URLs from ../.env)
       STOREFRONT_COMPONENTS_GITHUB: ${STOREFRONT_COMPONENTS_GITHUB:-https://github.com/pradip1995/storefront-components}
+      STOREFRONT_COMPONENTS_PATH: ${STOREFRONT_COMPONENTS_PATH:-}
       MEDUSA_PLUGINS_GITHUB: ${MEDUSA_PLUGINS_GITHUB:-https://github.com/SmartByteLabs/medusa-plugins}
+      MEDUSA_PLUGINS_PATH: ${MEDUSA_PLUGINS_PATH:-}
     volumes:
       - workspaces:/var/builder/workspaces
     depends_on:

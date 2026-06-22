@@ -234,6 +234,24 @@ model PluginRegistry {
   updatedAt          DateTime @updatedAt
 }
 
+model ProviderRegistry {
+  id                 String   @id @default(uuid())
+  module             String
+  providerId         String
+  displayName        String
+  description        String?
+  requiresPlugin     String?
+  medusaResolve      String?
+  githubRepo         String?
+  sourcePackage      String?
+  settingsSchemaJson Json
+  isBuiltin          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([module, providerId])
+}
+
 model ProjectSecret {
   id                  String   @id @default(uuid())
   projectId           String   @unique

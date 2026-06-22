@@ -1,0 +1,11 @@
+# Optional local dev overlay — mount storefront-components for live builder preview.
+# Usage:
+#   STOREFRONT_COMPONENTS_PATH=/path/to/storefront-components \
+#     docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+
+services:
+  web:
+    environment:
+      STOREFRONT_COMPONENTS_PATH: /storefront-components
+    volumes:
+      - ${STOREFRONT_COMPONENTS_PATH}:/storefront-components:ro

@@ -10,6 +10,7 @@
  *   node scripts/db.mjs generate
  *   node scripts/db.mjs studio
  */
+import { spawnSync } from "child_process"
 import { existsSync, readFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"

@@ -1,5 +1,6 @@
 import { prisma } from "@mwb/db"
 import { SECTION_CATALOG } from "./catalog"
+import { isLayoutShellPackage } from "./layout-shell"
 import {
   syncCatalogToDb,
   syncDefaultStorefrontComponents,
@@ -26,8 +27,26 @@ export async function syncSectionsFromPath(componentsPath: string): Promise<numb
 }
 
 export { registerCustomGithubRepo, syncDefaultStorefrontComponents, refreshLatestVersionsFromGithub }
-export { SECTION_CATALOG, PLUGIN_CATALOG, PLUGIN_CATEGORY_LABELS, BuilderSettingsSchema, compareVersions, hasUpdateAvailable }
-export { syncPluginsCatalogToDb, syncPluginsFromPath, syncDefaultPlugins, enrichPluginRecord, registerCustomPluginGithubRepo, syncPluginsFromGithub }
+export {
+  SECTION_CATALOG,
+  CATEGORY_LABELS,
+  PAGE_ROUTE_LABELS,
+  ROUTE_CATEGORY,
+  packageToDisplayName,
+} from "./catalog"
+export type { SectionCategory } from "./catalog-labels"
+export { isLayoutShellPackage, stripLayoutShells } from "./layout-shell"
+export { PLUGIN_CATALOG, PLUGIN_CATEGORY_LABELS } from "./plugins-catalog"
+export { BuilderSettingsSchema } from "./schemas/index"
+export { compareVersions, hasUpdateAvailable } from "./version"
+export { syncPluginsCatalogToDb, syncPluginsFromPath, syncDefaultPlugins, enrichPluginRecord, registerCustomPluginGithubRepo, syncPluginsFromGithub } from "./plugins-sync"
+export {
+  syncProvidersCatalogToDb,
+  syncProviderFromPackageDir,
+  listProvidersFromDb,
+  getProviderFromDb,
+  getProviderById,
+} from "./providers-sync"
 
 export type SectionForPage = {
   packageName: string
@@ -51,10 +70,11 @@ export function filterSectionsForPage(
   pageRoute: string,
   options?: { includeLayouts?: boolean; includeGlobal?: boolean }
 ): SectionForPage[] {
-  const includeLayouts = options?.includeLayouts ?? true
-  const includeGlobal = options?.includeGlobal ?? true
+  const includeLayouts = options?.includeLayouts ?? false
+  const includeGlobal = options?.includeGlobal ?? false
 
   return sections.filter((s) => {
+    if (isLayoutShellPackage(s.packageName)) return false
     if (s.componentType === "layout") {
       return includeLayouts && (s.pageTypes.length === 0 || s.pageTypes.includes(pageRoute))
     }

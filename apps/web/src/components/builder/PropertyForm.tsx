@@ -1,5 +1,6 @@
 import type { BuilderSettings } from "@mwb/registry/schemas"
-import { applySchemaDefaults, resolveInherits } from "@mwb/core/builder-config/write"
+import { applySchemaDefaults, resolveInherits } from "@mwb/core/builder-config"
+import { ImageUploadField } from "@/components/ImageUploadField"
 
 type Field = BuilderSettings["fields"][number]
 
@@ -24,16 +25,6 @@ export function PropertyForm({
 
   function setField(id: string, value: unknown) {
     onChange({ ...values, [id]: value })
-  }
-
-  async function uploadImage(fieldId: string, file: File) {
-    const form = new FormData()
-    form.append("files", file)
-    const res = await fetch(`/api/projects/${projectId}/upload`, { method: "POST", body: form })
-    if (!res.ok) return
-    const data = await res.json()
-    const url = data.files?.[0]?.medusaFileUrl
-    if (url) setField(fieldId, url)
   }
 
   const groups = schema.groups?.length
@@ -95,21 +86,13 @@ export function PropertyForm({
                     onChange={(e) => setField(field.id, e.target.checked)}
                   />
                 ) : field.type === "image" || field.type === "file" ? (
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]
-                        if (f) uploadImage(field.id, f)
-                      }}
-                    />
-                    {displayValues[field.id] ? (
-                      <p style={{ fontSize: "0.75rem", marginTop: "0.25rem", wordBreak: "break-all" }}>
-                        {String(displayValues[field.id])}
-                      </p>
-                    ) : null}
-                  </div>
+                  <ImageUploadField
+                    projectId={projectId}
+                    label=""
+                    nested
+                    value={String(displayValues[field.id] ?? "")}
+                    onChange={(url) => setField(field.id, url)}
+                  />
                 ) : field.type === "long-text" ? (
                   <textarea
                     rows={3}

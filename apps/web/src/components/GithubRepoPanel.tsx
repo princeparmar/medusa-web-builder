@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react"
 
 type GithubStatus = {
   configured: boolean
+  installed: boolean
+  installUrl: string
+  availableInstallations: Array<{ login: string; type: string }>
+  installationError: string | null
   linked: boolean
   githubRepo: string | null
   githubRepoId: number | null
@@ -36,11 +40,15 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
   }, [load])
 
   useEffect(() => {
-    if (status?.errorMessage && !status.linked) {
-      setMessage(status.errorMessage)
+    if (!status || status.linked) return
+    const err = status.errorMessage ?? status.installationError
+    if (err) {
+      setMessage(err)
       setIsError(true)
     }
-  }, [status?.errorMessage, status?.linked])
+  }, [status])
+
+  const canProvision = status?.configured && status?.installed && !status?.linked
 
   async function pollProvisionJob(jobId: string) {
     const deadline = Date.now() + 120_000
@@ -68,16 +76,18 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
           job.error ??
             job.failedReason ??
             github.errorMessage ??
+            github.installationError ??
             "Failed to create GitHub repository"
         )
         await load()
         return
       }
 
-      if (github.errorMessage && !github.linked) {
+      const err = github.errorMessage ?? github.installationError
+      if (err && !github.linked) {
         setProvisioning(false)
         setIsError(true)
-        setMessage(github.errorMessage)
+        setMessage(err)
         return
       }
 
@@ -108,7 +118,7 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
       setIsError(true)
       const parts = [data.error ?? "Failed to queue repository creation"]
       if (data.hint) parts.push(data.hint)
-      setMessage(parts.join(" — "))
+      setMessage(parts.join("\n\n"))
       return
     }
 
@@ -141,11 +151,37 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
     <div style={{ marginTop: "0.5rem" }}>
       <p style={{ fontSize: "0.8125rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
         No GitHub repository yet
-        {!status.configured && " — GitHub App credentials are not configured on the worker"}
+        {!status.configured && " — GitHub App credentials are not configured"}
+        {status.configured && !status.installed && " — GitHub App is not installed on the org"}
       </p>
       <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
         Expected: <code>{status.expectedRepo}</code>
       </p>
+
+      {status.configured && !status.installed && (
+        <div className="alert alert-error" style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
+          <p style={{ marginBottom: "0.5rem" }}>
+            {status.installationError ??
+              "Install your GitHub App on the medusa-storefronts organization before creating repositories."}
+          </p>
+          {status.availableInstallations.length > 0 && (
+            <p style={{ fontSize: "0.75rem", marginBottom: "0.5rem" }}>
+              Currently installed on:{" "}
+              {status.availableInstallations.map((a) => `${a.login} (${a.type})`).join(", ")}
+            </p>
+          )}
+          <a
+            href={status.installUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary"
+            style={{ fontSize: "0.75rem", display: "inline-flex" }}
+          >
+            Install GitHub App on org →
+          </a>
+        </div>
+      )}
+
       {message && (
         <div
           className={isError ? "alert alert-error" : "alert alert-success"}
@@ -154,23 +190,23 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
           {message}
         </div>
       )}
+
       <button
         type="button"
         className="btn btn-secondary"
         style={{ fontSize: "0.75rem" }}
         onClick={provision}
-        disabled={provisioning || !status.configured}
+        disabled={provisioning || !canProvision}
       >
         {provisioning ? "Creating repo…" : "Create GitHub repository"}
       </button>
+
       {!status.configured && (
         <p style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.5rem", maxWidth: 480 }}>
-          Add <code>GITHUB_APP_ID</code> and <code>GITHUB_APP_PRIVATE_KEY</code> to <code>.env</code>, install the
-          GitHub App on{" "}
-          <a href={status.orgUrl} target="_blank" rel="noopener noreferrer">
-            medusa-storefronts
-          </a>
-          , then restart the worker.
+          Add <code>GITHUB_APP_ID</code> and <code>GITHUB_APP_PRIVATE_KEY</code> to <code>.env</code>, then
+          restart web and worker:
+          <br />
+          <code>docker compose -f docker/docker-compose.yml up -d --force-recreate web worker</code>
         </p>
       )}
     </div>

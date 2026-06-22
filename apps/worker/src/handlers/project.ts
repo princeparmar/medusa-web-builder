@@ -6,6 +6,7 @@ import { prisma } from "@mwb/db"
 import {
   scaffoldStorefrontProject,
   readPagesConfig,
+  seedInitialBuilderState,
 } from "@mwb/core/scaffold"
 import {
   initAndPush,
@@ -16,12 +17,13 @@ import {
   createTag,
   checkoutBranch,
   getProjectRepoPath,
-  pushExistingRepoToRemote,
+  pushRepoToRemote,
 } from "@mwb/core/git"
 import {
   getRepoName,
   protectMainBranch,
   getOrCreateProjectRepo,
+  getAuthenticatedCloneUrl,
   githubCredentialsConfigured,
   formatGithubError,
 } from "@mwb/core/github"
@@ -52,6 +54,9 @@ export async function handleScaffold(job: Job<ProjectScaffoldJob>) {
       defaultRegion,
     })
 
+    const registry = await prisma.sectionRegistry.findMany()
+    await seedInitialBuilderState(repoPath, registry)
+
     await job.updateProgress(40)
     await publishProgress(projectId, { step: "github", progress: 40 })
 
@@ -76,9 +81,10 @@ export async function handleScaffold(job: Job<ProjectScaffoldJob>) {
     await job.updateProgress(60)
 
     if (hasGithub) {
+      const authCloneUrl = await getAuthenticatedCloneUrl(cloneUrl)
       await initAndPush({
         repoPath,
-        remoteUrl: cloneUrl,
+        remoteUrl: authCloneUrl,
         message: "chore: scaffold storefront",
       })
       await protectMainBranch(getRepoName(projectId))
@@ -258,6 +264,7 @@ export async function handleGithubProvision(job: Job<ProjectGithubProvisionJob>)
     await publishProgress(projectId, { step: "github_provision", progress: 20 })
 
     const repo = await getOrCreateProjectRepo(projectId)
+    const authCloneUrl = await getAuthenticatedCloneUrl(repo.cloneUrl)
 
     const releaseTemplate = join(process.cwd(), "templates", "project-release.yml")
     if (existsSync(releaseTemplate)) {
@@ -268,18 +275,10 @@ export async function handleGithubProvision(job: Job<ProjectGithubProvisionJob>)
     await publishProgress(projectId, { step: "github_push", progress: 50 })
 
     try {
-      await pushExistingRepoToRemote(repoPath, repo.cloneUrl)
-    } catch {
-      try {
-        await initAndPush({
-          repoPath,
-          remoteUrl: repo.cloneUrl,
-          message: "chore: scaffold storefront",
-        })
-      } catch (pushErr) {
-        const detail = pushErr instanceof Error ? pushErr.message : "git push failed"
-        throw new Error(`Repository created but push failed: ${detail}`)
-      }
+      await pushRepoToRemote(repoPath, authCloneUrl, "main", "chore: scaffold storefront")
+    } catch (pushErr) {
+      const detail = pushErr instanceof Error ? pushErr.message : "git push failed"
+      throw new Error(`Repository created but push failed: ${detail}`)
     }
 
     await protectMainBranch(getRepoName(projectId))

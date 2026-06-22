@@ -1,23 +1,26 @@
 import { describe, it, expect } from "vitest"
 import { BuilderSettingsSchema } from "./index"
-import { readFileSync } from "fs"
-import { join, dirname } from "path"
-import { fileURLToPath } from "url"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const pilotDir = join(__dirname, "../../data/pilot")
+/** Minimal fixture — real schemas live in storefront-components / medusa-plugins packages. */
+const segmentHeroFixture = {
+  version: "1",
+  fields: [
+    {
+      id: "variant",
+      type: "select",
+      label: "Layout",
+      options: ["overlay", "split"],
+      default: "overlay",
+    },
+  ],
+}
 
-describe("builder.settings.json pilot schemas", () => {
-  const files = [
-    "segment-hero.builder.settings.json",
-    "segment-nav.builder.settings.json",
-    "medusa-plugin-dynamic-config.builder.settings.json",
-  ]
+describe("BuilderSettingsSchema", () => {
+  it("validates a representative segment settings object", () => {
+    expect(() => BuilderSettingsSchema.parse(segmentHeroFixture)).not.toThrow()
+  })
 
-  for (const file of files) {
-    it(`validates ${file}`, () => {
-      const raw = JSON.parse(readFileSync(join(pilotDir, file), "utf8"))
-      expect(() => BuilderSettingsSchema.parse(raw)).not.toThrow()
-    })
-  }
+  it("validates empty settings", () => {
+    expect(() => BuilderSettingsSchema.parse({ version: "1", fields: [] })).not.toThrow()
+  })
 })

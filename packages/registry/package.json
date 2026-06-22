@@ -9,18 +9,24 @@
     ".": "./src/index.ts",
     "./schemas": "./src/schemas/index.ts",
     "./catalog": "./src/catalog.ts",
+    "./catalog-labels": "./src/catalog-labels.ts",
+    "./layout-shell": "./src/layout-shell.ts",
     "./plugins-catalog": "./src/plugins-catalog.ts",
-    "./providers-catalog": "./src/providers-catalog.ts"
+    "./providers-catalog": "./src/providers-catalog.ts",
+    "./providers-sync": "./src/providers-sync.ts"
   },
   "dependencies": {
     "@mwb/db": "workspace:*",
     "zod": "^3.24.1"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "sync-plugins-local": "tsx scripts/sync-plugins-local.ts",
+    "sync-sections-local": "tsx scripts/sync-sections-local.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   }

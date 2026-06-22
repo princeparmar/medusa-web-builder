@@ -19,11 +19,8 @@ import {
   updateRepoVariable,
 } from "@mwb/core/github/actions-config"
 import { githubCredentialsConfigured } from "@mwb/core/github"
-import {
-  PROVIDER_CATALOG,
-  MODULE_LABELS,
-  getProviderEntry,
-} from "@mwb/registry/providers-catalog"
+import { MODULE_LABELS } from "@mwb/registry/providers-catalog"
+import { listProvidersFromDb, getProviderById } from "@mwb/registry/providers-sync"
 import { enrichPluginRecord, hasUpdateAvailable } from "@mwb/registry"
 import type { BuilderSettings } from "@mwb/registry/schemas"
 import type { FieldBinding } from "@mwb/core/builder-config/bindings"
@@ -80,33 +77,41 @@ export async function GET(
     }
   })
 
+  const providerRegistry = await listProvidersFromDb()
+  const providersByModule = new Map<string, typeof providerRegistry>()
+  for (const p of providerRegistry) {
+    if (!providersByModule.has(p.module)) providersByModule.set(p.module, [])
+    providersByModule.get(p.module)!.push(p)
+  }
+
   const modules = ["auth", "fulfillment", "payment", "notification", "file"].map((moduleKey) => {
     const mod = modulesConfig[moduleKey as keyof typeof modulesConfig] as
       | { providers?: string[]; enabled?: string | boolean; mode?: string }
       | undefined
     const selectedProviders = mod?.providers ?? []
+    const moduleProviders = providersByModule.get(moduleKey) ?? []
     const providers = selectedProviders.map((providerId) => {
-      const catalog = getProviderEntry(moduleKey, providerId)
+      const reg = moduleProviders.find((p) => p.providerId === providerId)
       const options = modulesConfig.providerOptions?.[providerId] ?? {}
       return {
         module: moduleKey,
         providerId,
-        displayName: catalog?.displayName ?? providerId,
-        description: catalog?.description ?? "",
-        settingsSchemaJson: catalog?.settings ?? null,
+        displayName: reg?.displayName ?? providerId,
+        description: reg?.description ?? "",
+        settingsSchemaJson: reg?.settings ?? null,
         options,
         fieldBindings: bindings.providers[providerId] ?? {},
-        requiresPlugin: catalog?.requiresPlugin,
+        requiresPlugin: reg?.requiresPlugin ?? undefined,
       }
     })
     return {
       module: moduleKey,
       label: MODULE_LABELS[moduleKey] ?? moduleKey,
       providers,
-      availableProviders: PROVIDER_CATALOG.filter((p) => p.module === moduleKey).map((p) => ({
+      availableProviders: moduleProviders.map((p) => ({
         providerId: p.providerId,
         displayName: p.displayName,
-        requiresPlugin: p.requiresPlugin,
+        requiresPlugin: p.requiresPlugin ?? undefined,
       })),
     }
   })
@@ -248,8 +253,8 @@ export async function PATCH(
   }
 
   if (body.action === "save-provider-options") {
-    const entry = PROVIDER_CATALOG.find((p) => p.providerId === body.providerId)
-    const fields = entry?.settings.fields ?? []
+    const reg = await getProviderById(body.providerId)
+    const fields = reg?.settings.fields ?? []
     const compiled = compileOptionsWithBindings(body.values, body.bindings, fields)
 
     const modulesConfig = await readModulesConfigFile(repoPath)

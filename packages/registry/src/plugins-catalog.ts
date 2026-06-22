@@ -17,8 +17,7 @@ function plugin(
   displayName: string,
   description: string,
   version: string,
-  category: string,
-  settings?: unknown
+  category: string
 ): PluginCatalogEntry {
   return {
     packageName,
@@ -29,7 +28,7 @@ function plugin(
     githubRepo: DEFAULT_MEDUSA_PLUGINS_REPO,
     medusaResolve: packageName,
     category,
-    settings: settings ?? { version: "1", fields: [] },
+    settings: undefined,
   }
 }
 
@@ -37,27 +36,12 @@ function plugin(
 export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   plugin("medusa-product-helper", "Product Helper", "Product utilities and helpers for Medusa admin", "0.0.71", "catalog"),
   plugin("medusa-dynamic-metadata", "Dynamic Metadata", "Custom metadata fields on products and entities", "0.0.11", "catalog"),
-  plugin("medusa-review-rating", "Review & Rating", "Product reviews and star ratings", "0.0.38", "marketing", {
-    version: "1",
-    fields: [{ id: "auto_approve", type: "boolean", label: "Auto-approve reviews", default: false }],
-  }),
+  plugin("medusa-review-rating", "Review & Rating", "Product reviews and star ratings", "0.0.38", "marketing"),
   plugin("medusa-contact-us", "Contact Us", "Storefront email subscriptions and contact opt-ins", "0.0.29", "marketing"),
   plugin("customer-registration", "Customer Registration", "Custom customer registration flows for the storefront", "0.0.126", "auth"),
   plugin("stock-monitoring", "Stock Monitoring", "Low-stock alerts and inventory monitoring emails", "0.0.6", "inventory"),
   plugin("medusa-invoice-sbl", "Invoice (SBL)", "Invoice generation for orders", "0.0.12", "orders"),
-  plugin("order-management", "Order Management", "Order notifications, SMTP, and storefront order workflows", "0.0.79", "orders", {
-    version: "1",
-    fields: [
-      { id: "storefrontUrl", type: "short-text", label: "Storefront URL", group: "general", storage: "github-variable", envName: "STOREFRONT_URL" },
-      { id: "smtpHost", type: "short-text", label: "SMTP host", group: "email", storage: "github-variable", envName: "SMTP_HOST" },
-      { id: "smtpUser", type: "short-text", label: "SMTP user", group: "email", storage: "github-secret", sensitive: true, envName: "SMTP_USER" },
-      { id: "smtpPass", type: "short-text", label: "SMTP password", group: "email", storage: "github-secret", sensitive: true, envName: "SMTP_PASS" },
-    ],
-    groups: [
-      { id: "general", label: "General" },
-      { id: "email", label: "Email" },
-    ],
-  }),
+  plugin("order-management", "Order Management", "Order notifications, SMTP, and storefront order workflows", "0.0.79", "orders"),
   plugin("medusa-shiprocket-fulfillment-sbl", "Shiprocket Fulfillment", "Shiprocket shipping and fulfillment integration", "0.0.27", "fulfillment"),
   plugin("medusa-notification-token-management", "Notification Tokens", "Push notification device token management", "0.0.2", "notifications"),
   plugin("medusa-customer-file-upload", "Customer File Upload", "Allow customers to upload files on the storefront", "0.0.2", "content"),

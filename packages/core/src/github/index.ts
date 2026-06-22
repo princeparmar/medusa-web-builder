@@ -16,6 +16,31 @@ export function getFullRepoName(projectId: string): string {
 }
 
 export async function getOctokit(): Promise<Octokit> {
+  const token = await getInstallationAccessToken()
+  return new Octokit({ auth: token })
+}
+
+async function getInstallationId(
+  auth: ReturnType<typeof createAppAuth>
+): Promise<number> {
+  const jwt = await auth({ type: "app" })
+  const octokit = new Octokit({ auth: jwt.token })
+  const { data } = await octokit.rest.apps.listInstallations()
+  const installation = data.find((i) => i.account?.login === GITHUB_ORG)
+  if (!installation) {
+    const accounts = data
+      .map((i) => (i.account?.login ? `${i.account.login} (${i.account.type})` : null))
+      .filter(Boolean)
+    const hint =
+      accounts.length > 0
+        ? ` App is installed on: ${accounts.join(", ")}. Install it on org "${GITHUB_ORG}" or set GITHUB_ORG.`
+        : ` Install the app on https://github.com/organizations/${GITHUB_ORG}/settings/installations`
+    throw new Error(`GitHub App not installed on org ${GITHUB_ORG}.${hint}`)
+  }
+  return installation.id
+}
+
+async function getInstallationAccessToken(): Promise<string> {
   const appId = process.env.GITHUB_APP_ID
   const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, "\n")
 
@@ -28,20 +53,99 @@ export async function getOctokit(): Promise<Octokit> {
     type: "installation",
     installationId: await getInstallationId(auth),
   })
-  return new Octokit({ auth: installationAuth.token })
+  return installationAuth.token
 }
 
-async function getInstallationId(
-  auth: ReturnType<typeof createAppAuth>
-): Promise<number> {
-  const jwt = await auth({ type: "app" })
-  const octokit = new Octokit({ auth: jwt.token })
-  const { data } = await octokit.rest.apps.listInstallations()
-  const installation = data.find((i) => i.account?.login === GITHUB_ORG)
-  if (!installation) {
-    throw new Error(`GitHub App not installed on org ${GITHUB_ORG}`)
+export type GithubInstallationStatus = {
+  configured: boolean
+  installed: boolean
+  org: string
+  appSlug?: string
+  installationId?: number
+  availableInstallations: Array<{ login: string; type: string }>
+  error?: string
+  installUrl: string
+}
+
+/** Verify credentials exist and the app is installed on GITHUB_ORG. */
+export async function getGithubInstallationStatus(): Promise<GithubInstallationStatus> {
+  const defaultInstallUrl = `https://github.com/organizations/${GITHUB_ORG}/settings/installations`
+
+  if (!githubCredentialsConfigured()) {
+    return {
+      configured: false,
+      installed: false,
+      org: GITHUB_ORG,
+      availableInstallations: [],
+      installUrl: defaultInstallUrl,
+      error: "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not set",
+    }
   }
-  return installation.id
+
+  try {
+    const appId = process.env.GITHUB_APP_ID!
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY!.replace(/\\n/g, "\n")
+    const auth = createAppAuth({ appId, privateKey })
+    const jwt = await auth({ type: "app" })
+    const octokit = new Octokit({ auth: jwt.token })
+
+    const { data: app } = await octokit.rest.apps.getAuthenticated()
+    const appSlug = app?.slug ?? "medusa-web-builder"
+    const installUrl = `https://github.com/apps/${appSlug}/installations/new`
+
+    const { data } = await octokit.rest.apps.listInstallations()
+
+    const availableInstallations = data
+      .map((i) => ({
+        login: i.account?.login ?? "unknown",
+        type: i.account?.type ?? "unknown",
+      }))
+      .filter((i) => i.login !== "unknown")
+
+    const installation = data.find((i) => i.account?.login === GITHUB_ORG)
+    if (!installation) {
+      const on = availableInstallations.map((a) => `${a.login} (${a.type})`).join(", ")
+      return {
+        configured: true,
+        installed: false,
+        org: GITHUB_ORG,
+        appSlug,
+        availableInstallations,
+        installUrl,
+        error: on
+          ? `GitHub App is not installed on org "${GITHUB_ORG}". It is installed on: ${on}. Install it on the org or set GITHUB_ORG to match.`
+          : `GitHub App is not installed on org "${GITHUB_ORG}". Install it from your GitHub App settings.`,
+      }
+    }
+
+    return {
+      configured: true,
+      installed: true,
+      org: GITHUB_ORG,
+      appSlug,
+      installationId: installation.id,
+      availableInstallations,
+      installUrl,
+    }
+  } catch (err) {
+    return {
+      configured: true,
+      installed: false,
+      org: GITHUB_ORG,
+      availableInstallations: [],
+      installUrl: defaultInstallUrl,
+      error: formatGithubError(err),
+    }
+  }
+}
+
+/** HTTPS clone URL with installation token for git push from the worker. */
+export async function getAuthenticatedCloneUrl(cloneUrl: string): Promise<string> {
+  const token = await getInstallationAccessToken()
+  const url = new URL(cloneUrl)
+  url.username = "x-access-token"
+  url.password = token
+  return url.toString()
 }
 
 export async function createProjectRepo(projectId: string): Promise<{

@@ -17,8 +17,11 @@
     "./rbac": "./src/rbac/index.ts",
     "./email": "./src/email/index.ts",
     "./audit": "./src/audit/index.ts",
+    "./builder-config": "./src/builder-config/index.ts",
     "./builder-config/write": "./src/builder-config/write.ts",
-    "./builder-config/bindings": "./src/builder-config/bindings.ts"
+    "./builder-config/bindings": "./src/builder-config/bindings.ts",
+    "./builder-config/preview-merge": "./src/builder-config/preview-merge.ts",
+    "./builder-config/segment-props": "./src/builder-config/segment-props.ts"
   },
   "dependencies": {
     "@mwb/db": "workspace:*",

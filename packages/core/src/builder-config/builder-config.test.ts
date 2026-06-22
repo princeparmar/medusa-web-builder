@@ -21,6 +21,20 @@ describe("builder-config", () => {
     expect(applySchemaDefaults(heroSchema, {})).toEqual({ variant: "overlay" })
   })
 
+  it("applies defaults block for arrays and objects", () => {
+    const schema: BuilderSettings = {
+      version: "1",
+      fields: [{ id: "title", type: "short-text", default: "Features" }],
+      defaults: {
+        items: [{ name: "Secure checkout" }],
+      },
+    }
+    expect(applySchemaDefaults(schema, {})).toEqual({
+      title: "Features",
+      items: [{ name: "Secure checkout" }],
+    })
+  })
+
   it("resolves brand inherits", () => {
     const schema: BuilderSettings = {
       version: "1",

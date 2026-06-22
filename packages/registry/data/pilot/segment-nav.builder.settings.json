@@ -1,9 +1,0 @@
-{
-  "version": "1",
-  "fields": [
-    { "id": "logoUrl", "type": "image", "label": "Logo", "group": "brand" },
-    { "id": "logoUrlLight", "type": "image", "label": "Logo (light)", "group": "brand" }
-  ],
-  "groups": [{ "id": "brand", "label": "Brand" }],
-  "inherits": ["brand.logoUrl"]
-}

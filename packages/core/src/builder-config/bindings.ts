@@ -27,16 +27,134 @@ export function suggestStorage(field: BuilderField): FieldStorage {
   if (
     id.includes("secret") ||
     id.includes("password") ||
+    id.includes("pass") ||
     id.includes("token") ||
     id.includes("apikey") ||
-    id.includes("api_key")
+    id.includes("api_key") ||
+    id.includes("client_secret")
   ) {
     return "github-secret"
   }
-  if (id.includes("host") || id.includes("url") || id.includes("port")) {
+  if (id.includes("host") || id.includes("url") || id.includes("port") || id.includes("environment")) {
     return "github-variable"
   }
   return "hardcoded"
+}
+
+export function allowedStorageForField(field: BuilderField): FieldStorage[] {
+  if (field.allowedStorage?.length) return field.allowedStorage
+  return ["hardcoded", "github-variable", "github-secret"]
+}
+
+const ENV_REF = /^process\.env\.([A-Z][A-Z0-9_]*)$/
+
+function fieldIdToCompiledKey(fieldId: string): string {
+  return fieldId.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+}
+
+function getNestedCompiledValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".")
+  let cur: unknown = obj
+  for (const part of parts) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return undefined
+    const record = cur as Record<string, unknown>
+    const camel = part.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+    cur = record[part] ?? record[camel]
+  }
+  return cur
+}
+
+function inferStorageFromEnvName(field: BuilderField, envName: string): FieldStorage {
+  if (field.storage && field.storage !== "hardcoded") return field.storage
+  if (field.sensitive) return "github-secret"
+  const lower = envName.toLowerCase()
+  if (lower.includes("secret") || lower.includes("password") || lower.includes("pass") || lower.includes("token")) {
+    return "github-secret"
+  }
+  return "github-variable"
+}
+
+/** Reverse compiled pluginOptions / providerOptions into form values + bindings */
+export function decompileOptionsToForm(
+  compiled: Record<string, unknown>,
+  fields: BuilderField[],
+  existingBindings: Record<string, FieldBinding> = {}
+): { values: Record<string, unknown>; bindings: Record<string, FieldBinding> } {
+  const values: Record<string, unknown> = {}
+  const bindings: Record<string, FieldBinding> = {}
+
+  for (const field of fields) {
+    const existing = existingBindings[field.id]
+    const compiledValue = field.id.includes(".")
+      ? getNestedCompiledValue(compiled, field.id)
+      : compiled[fieldIdToCompiledKey(field.id)] ?? compiled[field.id]
+
+    if (existing) {
+      bindings[field.id] = { ...existing }
+      if (existing.storage === "hardcoded") {
+        values[field.id] = existing.value ?? compiledValue ?? field.default ?? ""
+      } else {
+        values[field.id] = existing.value ?? ""
+        if (typeof compiledValue === "string" && ENV_REF.test(compiledValue)) {
+          bindings[field.id].name = existing.name ?? compiledValue.match(ENV_REF)![1]
+        }
+      }
+      continue
+    }
+
+    if (typeof compiledValue === "string" && ENV_REF.test(compiledValue)) {
+      const envName = compiledValue.match(ENV_REF)![1]
+      bindings[field.id] = {
+        storage: inferStorageFromEnvName(field, envName),
+        name: field.envName && field.envName === envName ? envName : envName,
+      }
+      values[field.id] = ""
+      continue
+    }
+
+    if (compiledValue !== undefined) {
+      values[field.id] = compiledValue
+      bindings[field.id] = { storage: "hardcoded", value: compiledValue }
+      continue
+    }
+
+    values[field.id] = field.default ?? ""
+    bindings[field.id] = {
+      storage: suggestStorage(field),
+      name: suggestEnvName(field),
+      value: field.default,
+    }
+  }
+
+  return { values, bindings }
+}
+
+export function hydrateConfigFormState(
+  schema: { fields: BuilderField[] },
+  options: Record<string, unknown>,
+  fieldBindings: Record<string, FieldBinding>
+): { values: Record<string, unknown>; bindings: Record<string, FieldBinding> } {
+  return decompileOptionsToForm(options, schema.fields, fieldBindings)
+}
+
+export function countMissingRequiredFields(
+  schema: { fields: BuilderField[] },
+  values: Record<string, unknown>,
+  bindings: Record<string, FieldBinding>
+): number {
+  let missing = 0
+  for (const field of schema.fields) {
+    if (!field.required) continue
+    const binding = bindings[field.id]
+    const storage = binding?.storage ?? suggestStorage(field)
+    if (storage === "hardcoded") {
+      const v = binding?.value ?? values[field.id] ?? field.default
+      if (v === undefined || v === null || v === "") missing++
+    } else {
+      if (!binding?.name) missing++
+    }
+  }
+  return missing
 }
 
 export function suggestEnvName(field: BuilderField, prefix = ""): string {
@@ -94,8 +212,7 @@ export function compileOptionsWithBindings(
       }
       cur[parts[parts.length - 1]] = resolved
     } else {
-      const camel = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
-      out[camel] = resolved
+      out[field.id] = resolved
     }
   }
 

@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
 import {
   DndContext,
   closestCenter,
@@ -22,6 +21,11 @@ import { CSS } from "@dnd-kit/utilities"
 import { PropertyForm, initialValuesFromSchema } from "@/components/builder/PropertyForm"
 import { BrandPanel } from "@/components/builder/BrandPanel"
 import { ComponentPalette, type RegistrySection } from "@/components/builder/ComponentPalette"
+import { LivePreviewPanel } from "@/components/builder/LivePreviewPanel"
+import { isLayoutShellPackage, stripLayoutShells } from "@mwb/registry/layout-shell"
+import { brandPreviewStyle } from "@/lib/brand-config"
+import { BrandFontStyles } from "@/components/BrandFontStyles"
+import "@/components/builder/builder.css"
 
 type PageEntry = {
   route: string
@@ -33,46 +37,43 @@ type PageEntry = {
 
 type Section = RegistrySection
 
-function SortableSegment({
+function SortableStructureItem({
   id,
   label,
   selected,
   onSelect,
+  onRemove,
 }: {
   id: string
   label: string
   selected: boolean
   onSelect: () => void
+  onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        ...style,
-        display: "flex",
-        alignItems: "center",
-        gap: "0.75rem",
-        padding: "0.75rem 1rem",
-        background: selected ? "var(--border)" : "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-        marginBottom: "0.5rem",
-        cursor: "grab",
-      }}
+      className={`builder-structure-item${selected ? " selected" : ""}${isDragging ? " dragging" : ""}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
     >
-      <span {...attributes} {...listeners} style={{ color: "var(--muted)" }}>
+      <span className="builder-drag-handle" {...attributes} {...listeners} onClick={(e) => e.stopPropagation()}>
         ⠿
       </span>
-      <span style={{ fontSize: "0.875rem", flex: 1 }}>{label}</span>
+      <span className="builder-structure-label">{label}</span>
+      <button
+        type="button"
+        className="builder-structure-remove"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+        aria-label={`Remove ${label}`}
+      >
+        ×
+      </button>
     </div>
   )
 }
@@ -88,9 +89,11 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [message, setMessage] = useState("")
+  const [rightTab, setRightTab] = useState<"section" | "brand">("section")
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop")
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
@@ -103,9 +106,16 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
 
     if (pagesRes.ok) {
       const data = await pagesRes.json()
-      setPages(data.pages ?? [])
+      const loadedPages = (data.pages ?? []) as PageEntry[]
+      setPages(
+        loadedPages.map((p) => ({
+          ...p,
+          segments: stripLayoutShells(p.segments ?? []),
+        }))
+      )
       setBrand(data.brand ?? {})
-      setSectionProps(data.sectionProps ?? {})
+      const loadedProps = (data.sectionProps ?? {}) as Record<string, unknown>
+      setSectionProps(loadedProps)
     }
     if (registryRes.ok) {
       const data = await registryRes.json()
@@ -122,8 +132,36 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     loadData()
   }, [loadData])
 
+  useEffect(() => {
+    if (!sections.length || !pages.length) return
+    const layoutPackages = [
+      "@pradip1995/segment-nav",
+      "@pradip1995/segment-footer",
+      "@pradip1995/segment-promo-bar",
+    ]
+    const packages = new Set<string>(layoutPackages)
+    for (const page of pages) {
+      for (const seg of page.segments ?? []) {
+        if (!isLayoutShellPackage(seg)) packages.add(seg)
+      }
+    }
+    setSectionProps((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const pkg of packages) {
+        if (prev[pkg] !== undefined) continue
+        const meta = sections.find((s) => s.packageName === pkg)
+        const schema = meta?.settingsSchemaJson as Parameters<typeof initialValuesFromSchema>[0]
+        if (!schema) continue
+        next[pkg] = initialValuesFromSchema(schema)
+        changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [sections, pages])
+
   const currentPage = pages.find((p) => p.route === activeRoute)
-  const segments = currentPage?.segments ?? []
+  const segments = stripLayoutShells(currentPage?.segments ?? [])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -139,7 +177,7 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
   }
 
   function addSegment(packageName: string) {
-    if (!currentPage) return
+    if (!currentPage || isLayoutShellPackage(packageName)) return
     if (segments.includes(packageName)) return
     const meta = sections.find((s) => s.packageName === packageName)
     const schema = meta?.settingsSchemaJson as Parameters<typeof initialValuesFromSchema>[0]
@@ -151,9 +189,11 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     }
     setPages((prev) =>
       prev.map((p) =>
-        p.route === activeRoute ? { ...p, segments: [...p.segments, packageName] } : p
+        p.route === activeRoute ? { ...p, segments: [...stripLayoutShells(p.segments), packageName] } : p
       )
     )
+    setSelectedSegment(packageName)
+    setRightTab("section")
   }
 
   function removeSegment(packageName: string) {
@@ -167,13 +207,23 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     if (selectedSegment === packageName) setSelectedSegment(null)
   }
 
+  function selectSegment(packageName: string) {
+    if (isLayoutShellPackage(packageName)) return
+    setSelectedSegment(packageName)
+    setRightTab("section")
+  }
+
   async function saveDraft() {
     setSaving(true)
     setMessage("")
+    const pagesToSave = pages.map((p) => ({
+      ...p,
+      segments: stripLayoutShells(p.segments),
+    }))
     await fetch(`/api/projects/${projectId}/pages`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pages, brand, sectionProps }),
+      body: JSON.stringify({ pages: pagesToSave, brand, sectionProps }),
     })
 
     if (activeDraftId) {
@@ -185,6 +235,7 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     }
     setSaving(false)
     setMessage("Draft saved")
+    setTimeout(() => setMessage(""), 3000)
   }
 
   async function publish() {
@@ -203,121 +254,195 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     setPublishing(false)
     if (res.ok) setMessage("Publish queued — check Deployments")
     else setMessage("Publish failed")
+    setTimeout(() => setMessage(""), 4000)
   }
 
   const selectedSection = sections.find((s) => s.packageName === selectedSegment)
+  const pageTitle = currentPage?.metadata?.title ?? activeRoute
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "300px 1fr 280px 300px", gap: "1rem", minHeight: "calc(100vh - 120px)" }}>
-      <aside>
-        <h3 style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--muted)", marginBottom: "0.75rem" }}>Pages</h3>
-        {pages.map((p) => (
-          <button
-            key={p.route}
-            type="button"
-            className="btn btn-secondary"
-            style={{
-              width: "100%",
-              marginBottom: "0.375rem",
-              justifyContent: "flex-start",
-              background: activeRoute === p.route ? "var(--border)" : undefined,
-            }}
-            onClick={() => {
-              setActiveRoute(p.route)
-              setSelectedSegment(null)
-            }}
-          >
-            {p.metadata?.title ?? p.route}
+    <div className="builder-page">
+      <BrandFontStyles brand={brand} />
+      <div className="builder-toolbar">
+        <div className="builder-toolbar-title">
+          {pageTitle}
+          <span style={{ color: "var(--muted)", fontWeight: 400, marginLeft: "0.5rem", fontSize: "0.8125rem" }}>
+            {activeRoute}
+          </span>
+        </div>
+        <div className="builder-toolbar-actions">
+          <button type="button" className="btn btn-secondary" onClick={saveDraft} disabled={saving}>
+            {saving ? "Saving…" : "Save draft"}
           </button>
-        ))}
+          <button type="button" className="btn btn-primary" onClick={publish} disabled={publishing || !activeDraftId}>
+            {publishing ? "Publishing…" : "Publish"}
+          </button>
+        </div>
+      </div>
 
-        <h3 style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--muted)", margin: "1.5rem 0 0.75rem" }}>Components</h3>
-        <ComponentPalette
-          projectId={projectId}
-          activeRoute={activeRoute}
-          onAdd={addSegment}
-          usedPackages={segments}
-        />
-      </aside>
+      <div className="builder-body">
+        {/* Left: pages, structure, components */}
+        <aside className="builder-panel">
+          <div className="builder-panel-header">Pages</div>
+          <div className="builder-panel-body" style={{ paddingBottom: 0 }}>
+            {pages.map((p) => (
+              <button
+                key={p.route}
+                type="button"
+                className={`builder-page-btn${activeRoute === p.route ? " active" : ""}`}
+                onClick={() => {
+                  setActiveRoute(p.route)
+                  setSelectedSegment(null)
+                }}
+              >
+                <span>{p.metadata?.title ?? p.route}</span>
+                <span className="builder-page-route">{p.route}</span>
+              </button>
+            ))}
+          </div>
 
-      <section>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: "1rem" }}>{currentPage?.metadata?.title ?? activeRoute}</h2>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" className="btn btn-secondary" onClick={saveDraft} disabled={saving}>
-              {saving ? "Saving..." : "Save draft"}
+          <div className="builder-panel-header">Page structure</div>
+          <div className="builder-panel-body" style={{ maxHeight: 200, flex: "none" }}>
+            {segments.length === 0 ? (
+              <p style={{ color: "var(--muted)", fontSize: "0.75rem", textAlign: "center", padding: "0.5rem 0" }}>
+                No sections yet
+              </p>
+            ) : (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={segments} strategy={verticalListSortingStrategy}>
+                  {segments.map((seg) => {
+                    const meta = sections.find((s) => s.packageName === seg)
+                    return (
+                      <SortableStructureItem
+                        key={seg}
+                        id={seg}
+                        label={meta?.displayName ?? seg.replace("@pradip1995/segment-", "")}
+                        selected={selectedSegment === seg}
+                        onSelect={() => selectSegment(seg)}
+                        onRemove={() => removeSegment(seg)}
+                      />
+                    )
+                  })}
+                </SortableContext>
+              </DndContext>
+            )}
+          </div>
+
+          <div className="builder-panel-header">Add sections</div>
+          <div className="builder-panel-body" style={{ flex: 1 }}>
+            <ComponentPalette
+              projectId={projectId}
+              activeRoute={activeRoute}
+              onAdd={addSegment}
+              usedPackages={segments}
+            />
+          </div>
+        </aside>
+
+        {/* Center: live preview */}
+        <main className="builder-canvas">
+          <div className="builder-canvas-toolbar">
+            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Live preview</span>
+            <div className="builder-viewport-toggle">
+              <button
+                type="button"
+                className={`builder-viewport-btn${viewport === "desktop" ? " active" : ""}`}
+                onClick={() => setViewport("desktop")}
+              >
+                Desktop
+              </button>
+              <button
+                type="button"
+                className={`builder-viewport-btn${viewport === "mobile" ? " active" : ""}`}
+                onClick={() => setViewport("mobile")}
+              >
+                Mobile
+              </button>
+            </div>
+            <span style={{ fontSize: "0.6875rem", color: "var(--muted)" }}>
+              Click a section to edit
+            </span>
+          </div>
+          <div className="builder-preview-scroll">
+            <div
+              className={`builder-preview-frame${viewport === "mobile" ? " mobile" : ""}`}
+              style={brandPreviewStyle(brand)}
+            >
+              <LivePreviewPanel
+                projectId={projectId}
+                route={activeRoute}
+                pages={pages}
+                segments={segments}
+                layout={currentPage?.layout ?? "main"}
+                sections={sections}
+                sectionProps={sectionProps}
+                brand={brand}
+                selectedSegment={selectedSegment}
+                onSelectSegment={selectSegment}
+              />
+            </div>
+          </div>
+        </main>
+
+        {/* Right: properties / brand */}
+        <aside className="builder-panel builder-panel-right">
+          <div className="builder-right-tabs">
+            <button
+              type="button"
+              className={`builder-right-tab${rightTab === "section" ? " active" : ""}`}
+              onClick={() => setRightTab("section")}
+            >
+              Section
             </button>
-            <button type="button" className="btn btn-primary" onClick={publish} disabled={publishing}>
-              {publishing ? "Publishing..." : "Publish"}
+            <button
+              type="button"
+              className={`builder-right-tab${rightTab === "brand" ? " active" : ""}`}
+              onClick={() => setRightTab("brand")}
+            >
+              Brand
             </button>
           </div>
-        </div>
-        {message && <div className="alert alert-success">{message}</div>}
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={segments} strategy={verticalListSortingStrategy}>
-            {segments.map((seg) => {
-              const meta = sections.find((s) => s.packageName === seg)
-              return (
-                <div key={seg} style={{ display: "flex", gap: "0.5rem", alignItems: "stretch" }}>
-                  <div style={{ flex: 1 }}>
-                    <SortableSegment
-                      id={seg}
-                      label={meta?.displayName ?? seg.replace("@pradip1995/segment-", "")}
-                      selected={selectedSegment === seg}
-                      onSelect={() => setSelectedSegment(seg)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: "0.5rem" }}
-                    onClick={() => removeSegment(seg)}
-                  >
-                    ×
-                  </button>
+          <div className="builder-panel-body">
+            {rightTab === "section" ? (
+              selectedSegment && selectedSection ? (
+                <>
+                  <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {selectedSection.displayName}
+                  </h3>
+                  <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "1rem", lineHeight: 1.5 }}>
+                    {selectedSection.description}
+                    <br />
+                    <span style={{ fontSize: "0.6875rem" }}>
+                      {selectedSection.packageName} · v
+                      {selectedSection.installedVersion ?? selectedSection.version}
+                    </span>
+                  </p>
+                  <PropertyForm
+                    schema={selectedSection.settingsSchemaJson as Parameters<typeof PropertyForm>[0]["schema"]}
+                    values={(sectionProps[selectedSegment] as Record<string, unknown>) ?? {}}
+                    onChange={(vals) =>
+                      setSectionProps((prev) => ({ ...prev, [selectedSegment]: vals }))
+                    }
+                    projectId={projectId}
+                    brand={brand}
+                  />
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "2rem 0.5rem", color: "var(--muted)" }}>
+                  <p style={{ fontSize: "0.875rem", marginBottom: "0.5rem" }}>No section selected</p>
+                  <p style={{ fontSize: "0.75rem" }}>
+                    Click a block in the preview or pick one from Page structure to edit its properties.
+                  </p>
                 </div>
               )
-            })}
-          </SortableContext>
-        </DndContext>
+            ) : (
+              <BrandPanel brand={brand} onChange={setBrand} projectId={projectId} />
+            )}
+          </div>
+        </aside>
+      </div>
 
-        {segments.length === 0 && (
-          <p style={{ color: "var(--muted)", textAlign: "center", padding: "2rem" }}>
-            Add sections from the left panel
-          </p>
-        )}
-      </section>
-
-      <aside className="card" style={{ overflow: "auto" }}>
-        <h3 style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>Section properties</h3>
-        {selectedSegment && selectedSection ? (
-          <>
-            <p style={{ fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.75rem" }}>
-              {selectedSection.description}
-              <br />
-              <span style={{ fontSize: "0.65rem" }}>
-                {selectedSection.packageName} · v{selectedSection.installedVersion ?? selectedSection.version}
-              </span>
-            </p>
-            <PropertyForm
-            schema={selectedSection.settingsSchemaJson as Parameters<typeof PropertyForm>[0]["schema"]}
-            values={(sectionProps[selectedSegment] as Record<string, unknown>) ?? {}}
-            onChange={(vals) =>
-              setSectionProps((prev) => ({ ...prev, [selectedSegment]: vals }))
-            }
-            projectId={projectId}
-            brand={brand}
-          />
-          </>
-        ) : (
-          <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>Select a section to edit properties</p>
-        )}
-      </aside>
-
-      <aside className="card" style={{ overflow: "auto" }}>
-        <BrandPanel brand={brand} onChange={setBrand} projectId={projectId} />
-      </aside>
+      {message && <div className="builder-message">{message}</div>}
     </div>
   )
 }

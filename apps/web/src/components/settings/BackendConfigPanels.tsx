@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import type { BuilderSettings } from "@mwb/registry/schemas"
 import type { FieldBinding } from "@mwb/core/builder-config/bindings"
-import { ConfigFieldForm, initBindingsFromSchema } from "@/components/settings/ConfigFieldForm"
+import { hydrateConfigFormState } from "@mwb/core/builder-config/bindings"
+import { ConfigFieldForm } from "@/components/settings/ConfigFieldForm"
 
 type InstalledPlugin = {
   packageName: string
@@ -15,6 +16,7 @@ type InstalledPlugin = {
   updateAvailable: boolean
   hasSettings: boolean
   settingsSchemaJson: BuilderSettings | null
+  options: Record<string, unknown>
   fieldBindings: Record<string, FieldBinding>
 }
 
@@ -26,7 +28,9 @@ type ModuleInfo = {
     displayName: string
     description: string
     settingsSchemaJson: BuilderSettings | null
+    options: Record<string, unknown>
     fieldBindings: Record<string, FieldBinding>
+    requiresPlugin?: string
   }>
   availableProviders: Array<{ providerId: string; displayName: string }>
 }
@@ -63,8 +67,13 @@ export function BackendPluginsPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!current?.settingsSchemaJson) return
-    setValues({})
-    setBindings(initBindingsFromSchema(current.settingsSchemaJson, {}, current.fieldBindings))
+    const hydrated = hydrateConfigFormState(
+      current.settingsSchemaJson,
+      current.options ?? {},
+      current.fieldBindings ?? {}
+    )
+    setValues(hydrated.values)
+    setBindings(hydrated.bindings)
   }, [current])
 
   async function updateVersion(packageName: string, version: string) {
@@ -134,6 +143,7 @@ export function BackendPluginsPanel({ projectId }: { projectId: string }) {
               <strong style={{ fontSize: "0.875rem" }}>{p.displayName}</strong>
               <span style={{ display: "block", fontSize: "0.7rem", color: "var(--muted)" }}>
                 {p.packageName} · installed {p.versionSpec}
+                {p.hasSettings ? " · configurable" : ""}
               </span>
             </button>
             <div style={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
@@ -155,6 +165,11 @@ export function BackendPluginsPanel({ projectId }: { projectId: string }) {
 
       {current?.hasSettings && current.settingsSchemaJson && (
         <>
+          {current.description && (
+            <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: "0.75rem" }}>
+              {current.description}
+            </p>
+          )}
           <ConfigFieldForm
             schema={current.settingsSchemaJson}
             values={values}
@@ -214,10 +229,13 @@ export function BackendProvidersPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!currentProvider?.settingsSchemaJson) return
-    setValues({})
-    setBindings(
-      initBindingsFromSchema(currentProvider.settingsSchemaJson, {}, currentProvider.fieldBindings)
+    const hydrated = hydrateConfigFormState(
+      currentProvider.settingsSchemaJson,
+      currentProvider.options ?? {},
+      currentProvider.fieldBindings ?? {}
     )
+    setValues(hydrated.values)
+    setBindings(hydrated.bindings)
   }, [currentProvider])
 
   async function saveProviders(module: string, providers: string[]) {
@@ -298,6 +316,17 @@ export function BackendProvidersPanel({ projectId }: { projectId: string }) {
 
       {currentProvider?.settingsSchemaJson && (
         <>
+          {currentProvider.requiresPlugin && (
+            <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
+              Requires plugin <code>{currentProvider.requiresPlugin}</code> in{" "}
+              <code>backend/plugins.config.json</code>.
+            </p>
+          )}
+          {currentProvider.description && (
+            <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: "0.75rem" }}>
+              {currentProvider.description}
+            </p>
+          )}
           <ConfigFieldForm
             schema={currentProvider.settingsSchemaJson}
             values={values}

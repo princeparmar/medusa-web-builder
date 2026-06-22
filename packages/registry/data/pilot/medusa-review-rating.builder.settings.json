@@ -1,6 +1,0 @@
-{
-  "version": "1",
-  "fields": [
-    { "id": "auto_approve", "type": "boolean", "label": "Auto Approve Reviews", "default": false }
-  ]
-}

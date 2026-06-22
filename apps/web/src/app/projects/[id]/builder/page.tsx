@@ -19,14 +19,22 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
   if (membership.project.status !== "READY") redirect(`/projects/${id}`)
 
   return (
-    <main className="container" style={{ paddingTop: "1.5rem", paddingBottom: "2rem" }}>
-      <header style={{ marginBottom: "1rem" }}>
-        <Link href={`/projects/${id}`} style={{ fontSize: "0.875rem", color: "var(--muted)" }}>
+    <main style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <header
+        style={{
+          padding: "0.625rem 1.25rem",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg)",
+          flexShrink: 0,
+        }}
+      >
+        <Link href={`/projects/${id}`} style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
           ← {membership.project.name}
         </Link>
-        <h1 style={{ fontSize: "1.25rem", marginTop: "0.25rem" }}>Page builder</h1>
       </header>
-      <BuilderClient projectId={id} />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <BuilderClient projectId={id} />
+      </div>
     </main>
   )
 }

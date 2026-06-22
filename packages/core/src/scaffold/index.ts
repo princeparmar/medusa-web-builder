@@ -53,13 +53,30 @@ async function initBuilderConfigFiles(repoPath: string): Promise<void> {
           companyName: "",
           logoUrl: "",
           logoUrlLight: "",
+          faviconUrl: "",
+          ogImageUrl: "",
+          watermarkUrl: "",
           contactEmail: "",
           contactPhone: "",
           social: {},
           colors: {
-            primary: "#1a1a2e",
-            secondary: "#e94560",
-            accent: "#0f3460",
+            primary: "#5a2a43",
+            secondary: "#8b4567",
+            accent: "#c9a66b",
+            background: "#ffffff",
+            text: "#1f2937",
+            muted: "#6b7280",
+          },
+          fonts: {
+            h1: "Inter",
+            h2: "Inter",
+            h3: "Inter",
+            h4: "Inter",
+            h5: "Inter",
+            h6: "Inter",
+            title: "Inter",
+            body: "Inter",
+            bullet: "Inter",
           },
         },
         null,
@@ -138,3 +155,5 @@ export async function writeSectionProps(
 }
 
 export { getProjectRepoPath }
+export { seedInitialBuilderState, LAYOUT_SHELL_PACKAGES } from "./seed-defaults"
+export type { RegistrySectionSeed } from "./seed-defaults"

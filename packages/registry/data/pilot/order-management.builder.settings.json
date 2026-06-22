@@ -1,8 +1,0 @@
-{
-  "version": "1",
-  "fields": [
-    { "id": "storefrontUrl", "type": "short-text", "label": "Storefront URL", "group": "general" },
-    { "id": "smtpHost", "type": "short-text", "label": "SMTP Host", "group": "email" }
-  ],
-  "groups": [{ "id": "general", "label": "General" }, { "id": "email", "label": "Email" }]
-}

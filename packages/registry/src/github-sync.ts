@@ -9,7 +9,7 @@ import {
   type SectionCatalogEntry,
   DEFAULT_STOREFRONT_COMPONENTS_REPO,
 } from "./catalog"
-import { pilotSettingsForPackage } from "./pilot-settings"
+import { mergeSegmentSettings } from "./settings-merge"
 
 export function parseGithubRepoUrl(url: string): { owner: string; repo: string } {
   const cleaned = url.replace(/\.git$/, "").replace(/\/$/, "")
@@ -111,9 +111,10 @@ export async function syncSectionsFromGithub(
     const componentType = entry.name.startsWith("layout-") ? "layout" : "segment"
     const version = remoteVersion ?? catalog?.version ?? "0.1.0"
     const githubSettings = await fetchGithubBuilderSettings(owner, repo, entry.name, branch)
-    const pilotSettings = pilotSettingsForPackage(packageName)
-    const settings =
-      githubSettings ?? pilotSettings ?? catalog?.settings ?? { version: "1", fields: [] }
+    const settings = mergeSegmentSettings(
+      entry.name,
+      githubSettings as import("./schemas").BuilderSettings | undefined
+    )
 
     await prisma.sectionRegistry.upsert({
       where: { packageName },
@@ -166,10 +167,20 @@ export async function refreshLatestVersionsFromGithub(): Promise<number> {
     try {
       const { owner, repo } = parseGithubRepoUrl(section.githubRepo)
       const latest = await fetchPackageVersion(owner, repo, entryName, "main")
-      if (latest && latest !== section.latestVersion) {
+      const githubSettings = await fetchGithubBuilderSettings(owner, repo, entryName, "main")
+      const settings = mergeSegmentSettings(
+        entryName,
+        githubSettings as import("./schemas").BuilderSettings | undefined
+      )
+
+      const data: { latestVersion?: string; settingsSchemaJson?: object } = {}
+      if (latest) data.latestVersion = latest
+      if (githubSettings) data.settingsSchemaJson = settings as object
+
+      if (Object.keys(data).length > 0) {
         await prisma.sectionRegistry.update({
           where: { id: section.id },
-          data: { latestVersion: latest },
+          data,
         })
         updated++
       }
@@ -228,13 +239,31 @@ async function syncSectionsFromLocalPath(componentsPath: string, githubRepo: str
       if (pkg.version) version = pkg.version
     }
 
-    let settings: unknown = catalog?.settings
+    let settings = mergeSegmentSettings(entry, null)
     const settingsPath = join(pkgDir, "builder.settings.json")
     if (existsSync(settingsPath)) {
-      settings = BuilderSettingsSchema.parse(JSON.parse(await readFile(settingsPath, "utf8")))
+      settings = mergeSegmentSettings(
+        entry,
+        BuilderSettingsSchema.parse(JSON.parse(await readFile(settingsPath, "utf8")))
+      )
     }
 
     const componentType = entry.startsWith("layout-") ? "layout" : "segment"
+
+    let manifestJson = (catalog?.manifest ?? {
+      id: entry.replace(/^(segment|layout)-/, ""),
+      type: componentType,
+      version,
+    }) as Record<string, unknown>
+
+    const manifestPath = join(pkgDir, "src", "manifest.ts")
+    if (existsSync(manifestPath)) {
+      const manifestSrc = await readFile(manifestPath, "utf8")
+      const dataKeyMatch = manifestSrc.match(/dataKey:\s*"([^"]+)"/)
+      if (dataKeyMatch) {
+        manifestJson = { ...manifestJson, dataKey: dataKeyMatch[1] }
+      }
+    }
 
     await prisma.sectionRegistry.upsert({
       where: { packageName },
@@ -247,19 +276,16 @@ async function syncSectionsFromLocalPath(componentsPath: string, githubRepo: str
         componentType,
         category: catalog?.category ?? inferCategoryFromName(entry),
         description: catalog?.description ?? `${componentType} component`,
-        manifestJson: (catalog?.manifest ?? {
-          id: entry.replace(/^(segment|layout)-/, ""),
-          type: componentType,
-          version,
-        }) as object,
-        settingsSchemaJson: settings ?? undefined,
+        manifestJson: manifestJson as object,
+        settingsSchemaJson: settings as object,
         pageTypes: catalog?.pageTypes ?? [],
         isBuiltin: true,
       },
       update: {
         version,
         latestVersion: version,
-        settingsSchemaJson: settings ?? undefined,
+        settingsSchemaJson: settings as object,
+        manifestJson: manifestJson as object,
       },
     })
     count++
