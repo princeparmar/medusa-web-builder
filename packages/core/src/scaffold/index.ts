@@ -36,7 +36,7 @@ export async function scaffoldStorefrontProject(options: ScaffoldOptions): Promi
 
   const cmd = [
     "npx",
-    "@pradip1995/create-storefront-app@0.5.0",
+    "@pradip1995/create-storefront-app@0.5.2",
     shopSlug,
     `--dir "${shopsRoot}"`,
     `--preset ${preset}`,
