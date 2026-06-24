@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@mwb/db"
-import { requireAuth } from "@/lib/auth-helpers"
-import { enqueueRegistryJob } from "@mwb/core/queue"
 import { filterSectionsForPage } from "@mwb/registry"
-import { z } from "zod"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -32,34 +29,5 @@ export async function GET(request: Request) {
         )
       : enriched
 
-  const sources = await prisma.sectionSource.findMany({ orderBy: { createdAt: "desc" } })
-
-  return NextResponse.json({
-    sections: filtered,
-    sources,
-    storefrontComponentsRepo:
-      process.env.STOREFRONT_COMPONENTS_GITHUB ??
-      "https://github.com/pradip1995/storefront-components",
-  })
-}
-
-const registerSchema = z.object({
-  githubRepo: z.string().url(),
-  branch: z.string().default("main"),
-})
-
-export async function POST(request: Request) {
-  const { error } = await requireAuth()
-  if (error) return error
-
-  const body = await request.json()
-  const data = registerSchema.parse(body)
-
-  await enqueueRegistryJob({
-    type: "github-repo",
-    githubRepo: data.githubRepo,
-    branch: data.branch,
-  })
-
-  return NextResponse.json({ status: "queued" }, { status: 202 })
+  return NextResponse.json({ sections: filtered })
 }

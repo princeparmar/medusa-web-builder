@@ -143,6 +143,46 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
       allowedStorage: ["hardcoded", "github-variable"],
     },
   ]),
+  provider(
+    "fulfillment",
+    "shiprocket",
+    "Shiprocket",
+    "Shiprocket shipping and fulfillment (requires medusa-shiprocket-fulfillment-sbl plugin)",
+    [
+      {
+        id: "email",
+        type: "short-text",
+        label: "Shiprocket email",
+        required: true,
+        envName: "SHIPROCKET_EMAIL",
+        storage: "github-secret",
+        allowedStorage: ["github-secret"],
+        sensitive: true,
+      },
+      {
+        id: "password",
+        type: "short-text",
+        label: "Shiprocket password",
+        required: true,
+        envName: "SHIPROCKET_PASSWORD",
+        storage: "github-secret",
+        allowedStorage: ["github-secret"],
+        sensitive: true,
+      },
+      {
+        id: "pickupLocation",
+        type: "short-text",
+        label: "Pickup location",
+        description: "Warehouse name registered in Shiprocket.",
+        envName: "SHIPROCKET_PICKUP_LOCATION",
+        storage: "github-variable",
+        allowedStorage: ["hardcoded", "github-variable"],
+        default: "Primary",
+        required: false,
+      },
+    ],
+    "medusa-shiprocket-fulfillment-sbl"
+  ),
   provider("file", "s3", "AWS S3", "S3 file storage", [
     {
       id: "access_key_id",

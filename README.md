@@ -19,7 +19,7 @@ pnpm dev:web
 pnpm dev:worker
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000 (pnpm on host). For the full Docker stack, use http://localhost:3100 instead.
 
 ## Database migrations
 
@@ -59,11 +59,22 @@ There is no separate “queue” Docker service. **Redis** is the broker; the **
 | `project` | `publish` | Publish | Merge, tag `v*`, create deployment |
 | `project` | `github.provision` | “Create GitHub repository” | Create/link `medusa-storefronts/storefront-{id}` |
 | `registry` | `sections`, `plugins`, `github-repo`, `github-plugins-repo`, `refresh-versions` | Registry sync / custom repo registration | Sync section & plugin catalog |
-| `deploy` | `trigger` | GitHub `workflow_run` / release webhook | POST to `DEPLOY_WEBHOOK_URL` (K8s deploy agent or local stub) |
+| `deploy` | `trigger` | GitHub `workflow_run` / release webhook | POST to `DEPLOY_WEBHOOK_URL` (local stub) |
 
 **Local dev (pnpm):** run `pnpm dev:worker` in a second terminal alongside `pnpm dev:web`.
 
-**Docker:** `docker compose -f docker/docker-compose.yml up --build` starts `redis`, `worker`, `web`, and `deploy-stub` (local deploy webhook on port 9090).
+**Docker:** `docker compose -f docker/docker-compose.yml up --build` starts `redis`, `worker`, `web`, and `deploy-stub` (deploy webhook on host port **9190**).
+
+**Docker host ports** (override with `MWB_*_PORT` in `.env`):
+
+| Service | Host port | URL / connection |
+|---------|-----------|------------------|
+| Web | 3100 | http://localhost:3100 |
+| Postgres | 5433 | `postgresql://mwb:mwb@localhost:5433/medusa_web_builder` |
+| Redis | 6380 | `redis://localhost:6380` |
+| Mailpit UI | 8125 | http://localhost:8125 |
+| Mailpit SMTP | 1125 | `localhost:1125` |
+| Deploy stub | 9190 | http://localhost:9190/deploy |
 
 Verify the worker is running:
 
@@ -91,6 +102,8 @@ Starts postgres, redis, mailpit, **worker** (queue processor), **web**, and **de
 ```bash
 docker compose -f docker/docker-compose.yml up --build
 ```
+
+Open http://localhost:3100
 
 Or via Makefile: `make up` (infra + full stack).
 

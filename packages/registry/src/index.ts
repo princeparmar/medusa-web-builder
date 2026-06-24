@@ -13,17 +13,11 @@ import { PLUGIN_CATALOG, PLUGIN_CATEGORY_LABELS } from "./plugins-catalog"
 import { syncDefaultPlugins, syncPluginsCatalogToDb, syncPluginsFromPath, enrichPluginRecord, registerCustomPluginGithubRepo, syncPluginsFromGithub } from "./plugins-sync"
 
 export async function syncBuiltinSections(): Promise<number> {
-  return syncCatalogToDb()
+  return syncDefaultStorefrontComponents()
 }
 
 export async function syncBuiltinPlugins(): Promise<number> {
   return syncDefaultPlugins()
-}
-
-export async function syncSectionsFromPath(componentsPath: string): Promise<number> {
-  const { syncDefaultStorefrontComponents } = await import("./github-sync")
-  process.env.STOREFRONT_COMPONENTS_PATH = componentsPath
-  return syncDefaultStorefrontComponents()
 }
 
 export { registerCustomGithubRepo, syncDefaultStorefrontComponents, refreshLatestVersionsFromGithub }
@@ -38,7 +32,8 @@ export type { SectionCategory } from "./catalog-labels"
 export { isLayoutShellPackage, stripLayoutShells } from "./layout-shell"
 export { PLUGIN_CATALOG, PLUGIN_CATEGORY_LABELS } from "./plugins-catalog"
 export { BuilderSettingsSchema } from "./schemas/index"
-export { compareVersions, hasUpdateAvailable } from "./version"
+export { compareVersions, hasUpdateAvailable, normalizeVersion, pickMaxVersion, resolvePluginLatestVersion } from "./version"
+export { fetchNpmLatestVersion, refreshPluginLatestVersionsFromNpm } from "./npm"
 export { syncPluginsCatalogToDb, syncPluginsFromPath, syncDefaultPlugins, enrichPluginRecord, registerCustomPluginGithubRepo, syncPluginsFromGithub } from "./plugins-sync"
 export {
   syncProvidersCatalogToDb,

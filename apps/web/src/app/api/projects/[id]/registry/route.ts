@@ -63,14 +63,8 @@ export async function GET(
 
   const filtered = pageType && !all ? filterSectionsForPage(enriched, pageType) : enriched
 
-  const sources = await prisma.sectionSource.findMany({ orderBy: { createdAt: "desc" } })
-
   return NextResponse.json({
     sections: filtered,
     allSections: all ? enriched : undefined,
-    sources,
-    storefrontComponentsRepo:
-      process.env.STOREFRONT_COMPONENTS_GITHUB ??
-      "https://github.com/pradip1995/storefront-components",
   })
 }

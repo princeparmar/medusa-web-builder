@@ -1,7 +1,53 @@
+import { createPrivateKey } from "crypto"
 import { createAppAuth } from "@octokit/auth-app"
 import { Octokit } from "@octokit/rest"
 
 const GITHUB_ORG = process.env.GITHUB_ORG ?? "medusa-storefronts"
+
+/** Normalize PEM from .env (quoted string with \\n, or multiline). */
+export function normalizeGithubPrivateKey(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null
+  let key = raw.trim()
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1)
+  }
+  key = key.replace(/\\n/g, "\n").trim()
+  if (!key.includes("BEGIN")) return null
+  return key
+}
+
+export function validateGithubPrivateKey(key: string): { ok: true } | { ok: false; error: string } {
+  try {
+    createPrivateKey(key)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/DECODER|unsupported|PEM|private key/i.test(msg)) {
+      return {
+        ok: false,
+        error:
+          "The cloud storage private key in server settings is invalid or corrupted. " +
+          "Re-paste the PEM key as a single line with \\n for line breaks, or leave GITHUB_APP_PRIVATE_KEY empty to run without cloud backup.",
+      }
+    }
+    return { ok: false, error: msg }
+  }
+}
+
+function getGithubPrivateKey(): string {
+  const key = normalizeGithubPrivateKey(process.env.GITHUB_APP_PRIVATE_KEY)
+  if (!key) {
+    throw new Error("GITHUB_APP_PRIVATE_KEY is missing or malformed")
+  }
+  const validation = validateGithubPrivateKey(key)
+  if (!validation.ok) {
+    throw new Error(validation.error)
+  }
+  return key
+}
 
 export function getGithubOrg(): string {
   return GITHUB_ORG
@@ -42,10 +88,10 @@ async function getInstallationId(
 
 async function getInstallationAccessToken(): Promise<string> {
   const appId = process.env.GITHUB_APP_ID
-  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, "\n")
+  const privateKey = getGithubPrivateKey()
 
-  if (!appId || !privateKey) {
-    throw new Error("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required")
+  if (!appId) {
+    throw new Error("GITHUB_APP_ID is required")
   }
 
   const auth = createAppAuth({ appId, privateKey })
@@ -72,19 +118,29 @@ export async function getGithubInstallationStatus(): Promise<GithubInstallationS
   const defaultInstallUrl = `https://github.com/organizations/${GITHUB_ORG}/settings/installations`
 
   if (!githubCredentialsConfigured()) {
+    const rawKey = normalizeGithubPrivateKey(process.env.GITHUB_APP_PRIVATE_KEY)
+    let error = "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not set"
+    if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY) {
+      if (!rawKey) {
+        error = "GITHUB_APP_PRIVATE_KEY is missing or malformed"
+      } else {
+        const validation = validateGithubPrivateKey(rawKey)
+        error = validation.ok ? error : validation.error
+      }
+    }
     return {
       configured: false,
       installed: false,
       org: GITHUB_ORG,
       availableInstallations: [],
       installUrl: defaultInstallUrl,
-      error: "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not set",
+      error,
     }
   }
 
   try {
     const appId = process.env.GITHUB_APP_ID!
-    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY!.replace(/\\n/g, "\n")
+    const privateKey = getGithubPrivateKey()
     const auth = createAppAuth({ appId, privateKey })
     const jwt = await auth({ type: "app" })
     const octokit = new Octokit({ auth: jwt.token })
@@ -282,7 +338,10 @@ export function extractTagFromWorkflowRun(run: {
 }
 
 export function githubCredentialsConfigured(): boolean {
-  return !!(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY)
+  const appId = process.env.GITHUB_APP_ID
+  const key = normalizeGithubPrivateKey(process.env.GITHUB_APP_PRIVATE_KEY)
+  if (!appId || !key) return false
+  return validateGithubPrivateKey(key).ok
 }
 
 /** Turn Octokit / GitHub API errors into a user-readable message. */
@@ -316,7 +375,15 @@ export function formatGithubError(err: unknown): string {
     return [prefix + `: ${apiMessage}`, details, hint].filter(Boolean).join(" — ")
   }
 
-  if (e.message) return e.message
+  if (e.message) {
+    if (/DECODER|unsupported|PEM|private key/i.test(e.message)) {
+      return (
+        "Cloud storage private key is invalid. Re-paste GITHUB_APP_PRIVATE_KEY in .env " +
+        "(single line with \\n for line breaks), or remove it to run without cloud backup."
+      )
+    }
+    return e.message
+  }
   return "GitHub request failed"
 }
 

@@ -41,9 +41,8 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!status || status.linked) return
-    const err = status.errorMessage ?? status.installationError
-    if (err) {
-      setMessage(err)
+    if (status.installationError) {
+      setMessage(status.installationError)
       setIsError(true)
     }
   }, [status])
@@ -64,7 +63,7 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
       if (github.linked && github.githubRepo) {
         setProvisioning(false)
         setIsError(false)
-        setMessage(`Repository ready: ${github.githubRepo}`)
+        setMessage(`Cloud backup ready: ${github.githubRepo}`)
         window.location.reload()
         return
       }
@@ -77,7 +76,7 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
             job.failedReason ??
             github.errorMessage ??
             github.installationError ??
-            "Failed to create GitHub repository"
+            "Could not set up cloud backup"
         )
         await load()
         return
@@ -97,7 +96,7 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
         setProvisioning(false)
         setIsError(true)
         setMessage(
-          "Timed out waiting for GitHub repository. Check worker logs: docker compose -f docker/docker-compose.yml logs worker"
+          "Timed out waiting for cloud backup. Check that the background worker is running."
         )
       }
     }
@@ -116,13 +115,13 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
     if (!res.ok) {
       setProvisioning(false)
       setIsError(true)
-      const parts = [data.error ?? "Failed to queue repository creation"]
+      const parts = [data.error ?? "Could not start cloud backup setup"]
       if (data.hint) parts.push(data.hint)
       setMessage(parts.join("\n\n"))
       return
     }
 
-    setMessage("Creating GitHub repository…")
+    setMessage("Setting up cloud backup…")
     if (data.jobId) {
       await pollProvisionJob(data.jobId)
     } else {
@@ -150,19 +149,19 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
   return (
     <div style={{ marginTop: "0.5rem" }}>
       <p style={{ fontSize: "0.8125rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
-        No GitHub repository yet
-        {!status.configured && " — GitHub App credentials are not configured"}
-        {status.configured && !status.installed && " — GitHub App is not installed on the org"}
+        No cloud backup yet
+        {!status.configured && " — online storage is not configured on this server"}
+        {status.configured && !status.installed && " — connect your online storage account first"}
       </p>
       <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
-        Expected: <code>{status.expectedRepo}</code>
+        Backup name: <code>{status.expectedRepo}</code>
       </p>
 
       {status.configured && !status.installed && (
         <div className="alert alert-error" style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
           <p style={{ marginBottom: "0.5rem" }}>
             {status.installationError ??
-              "Install your GitHub App on the medusa-storefronts organization before creating repositories."}
+              "Connect online storage for this shop before uploading changes."}
           </p>
           {status.availableInstallations.length > 0 && (
             <p style={{ fontSize: "0.75rem", marginBottom: "0.5rem" }}>
@@ -177,7 +176,7 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
             className="btn btn-secondary"
             style={{ fontSize: "0.75rem", display: "inline-flex" }}
           >
-            Install GitHub App on org →
+            Connect online storage →
           </a>
         </div>
       )}
@@ -198,15 +197,12 @@ export function GithubRepoPanel({ projectId }: { projectId: string }) {
         onClick={provision}
         disabled={provisioning || !canProvision}
       >
-        {provisioning ? "Creating repo…" : "Create GitHub repository"}
+        {provisioning ? "Setting up…" : "Set up cloud backup"}
       </button>
 
       {!status.configured && (
         <p style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.5rem", maxWidth: 480 }}>
-          Add <code>GITHUB_APP_ID</code> and <code>GITHUB_APP_PRIVATE_KEY</code> to <code>.env</code>, then
-          restart web and worker:
-          <br />
-          <code>docker compose -f docker/docker-compose.yml up -d --force-recreate web worker</code>
+          Ask your administrator to configure online storage, then restart the app.
         </p>
       )}
     </div>

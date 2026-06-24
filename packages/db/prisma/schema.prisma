@@ -52,6 +52,7 @@ model User {
   logoUrl         String?
   emailVerified   DateTime?
   onboardingStep  OnboardingStep @default(REGISTERED)
+  isAdmin         Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -223,13 +224,14 @@ model PluginRegistry {
   id                 String   @id @default(uuid())
   packageName        String   @unique
   displayName        String
-  githubRepo         String
+  githubRepo         String?
   version            String
   latestVersion      String?
   description        String?
+  category           String?
   medusaResolve      String
   settingsSchemaJson Json?
-  isBuiltin          Boolean  @default(true)
+  isBuiltin          Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

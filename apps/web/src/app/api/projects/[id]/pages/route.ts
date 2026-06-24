@@ -2,11 +2,8 @@ import { NextResponse } from "next/server"
 import { prisma } from "@mwb/db"
 import { requireProjectAccess } from "@/lib/auth-helpers"
 import {
-  readPagesConfig,
-  writePagesConfig,
   readBrandConfig,
-  writeBrandConfig,
-  readSectionProps,
+  readBuilderState,
 } from "@mwb/core/scaffold"
 import { writeBuilderArtifacts } from "@mwb/core/builder-config/write"
 import { existsSync } from "fs"
@@ -26,9 +23,11 @@ export async function GET(
   }
 
   const repoPath = resolve(project.workspacePath)
-  const pages = await readPagesConfig(repoPath).catch(() => [])
+  const { pages, sectionProps } = await readBuilderState(repoPath).catch(() => ({
+    pages: [],
+    sectionProps: {},
+  }))
   const brand = await readBrandConfig(repoPath).catch(() => ({}))
-  const sectionProps = await readSectionProps(repoPath).catch(() => ({}))
 
   const { readProjectFile } = await import("@mwb/core/config")
   const sectionsConfig = await readProjectFile(repoPath, "storefront/builder/sections.config.json")
@@ -52,16 +51,13 @@ export async function PUT(
   const body = await request.json()
   const repoPath = resolve(project.workspacePath)
 
-  if (body.pages) {
-    await writePagesConfig(repoPath, body.pages)
-  }
-  if (body.brand) {
-    await writeBrandConfig(repoPath, body.brand)
-  }
-
-  const pages = body.pages ?? (await readPagesConfig(repoPath).catch(() => []))
+  const existing = await readBuilderState(repoPath).catch(() => ({
+    pages: [],
+    sectionProps: {} as Record<string, unknown>,
+  }))
+  const pages = body.pages ?? existing.pages
   const brand = body.brand ?? (await readBrandConfig(repoPath).catch(() => ({})))
-  const sectionProps = body.sectionProps ?? (await readSectionProps(repoPath).catch(() => ({})))
+  const sectionProps = body.sectionProps ?? existing.sectionProps
 
   const registry = await prisma.sectionRegistry.findMany()
   const sections = registry.map((s) => {
@@ -75,11 +71,15 @@ export async function PUT(
 
   const compiled = await writeBuilderArtifacts({
     repoPath,
-    pages: pages as Array<{ route: string; segments: string[] }>,
+    pages: pages as Array<{ route: string; segments: string[]; workflow?: string; layout?: string }>,
     sectionProps: sectionProps as Record<string, unknown>,
     brand: brand as Record<string, unknown>,
     sections,
   })
 
-  return NextResponse.json({ ok: true, compiled })
+  return NextResponse.json({
+    ok: true,
+    compiled,
+    wrote: ["storefront/pages.config.json", "storefront/builder/section-props.json", "storefront/builder/brand.json"],
+  })
 }

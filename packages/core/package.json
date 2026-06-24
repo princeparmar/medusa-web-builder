@@ -21,7 +21,8 @@
     "./builder-config/write": "./src/builder-config/write.ts",
     "./builder-config/bindings": "./src/builder-config/bindings.ts",
     "./builder-config/preview-merge": "./src/builder-config/preview-merge.ts",
-    "./builder-config/segment-props": "./src/builder-config/segment-props.ts"
+    "./builder-config/segment-props": "./src/builder-config/segment-props.ts",
+    "./shops": "./src/shops/index.ts"
   },
   "dependencies": {
     "@mwb/db": "workspace:*",

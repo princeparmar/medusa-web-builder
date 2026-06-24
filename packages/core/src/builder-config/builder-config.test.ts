@@ -80,7 +80,7 @@ describe("builder-config", () => {
   it("strips dynamic-config plugin from plugins.config", () => {
     const next = stripDynamicConfigPlugin({
       plugins: {
-        "medusa-plugin-dynamic-config": "^0.0.34",
+        "medusa-plugin-dynamic-config": "^0.0.35",
         "medusa-review-rating": "^0.0.38",
       },
       pluginOptions: {

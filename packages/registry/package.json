@@ -21,8 +21,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "sync-plugins-local": "tsx scripts/sync-plugins-local.ts",
-    "sync-sections-local": "tsx scripts/sync-sections-local.ts"
+    "sync-plugins-local": "tsx scripts/sync-plugins-local.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

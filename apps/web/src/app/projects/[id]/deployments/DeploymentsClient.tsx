@@ -71,9 +71,9 @@ export default function DeploymentsClient({ projectId, projectName }: { projectI
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "0.5rem", marginBottom: "2rem", gap: "1rem" }}>
         <div>
-          <h1 style={{ marginBottom: "0.25rem" }}>Deployments</h1>
+          <h1 style={{ marginBottom: "0.25rem" }}>Release history</h1>
           <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>
-            Release builds from GitHub Actions
+            Past uploads and cloud builds
             {data?.githubRepo ? ` · ${data.githubRepo}` : ""}
           </p>
         </div>
@@ -86,7 +86,7 @@ export default function DeploymentsClient({ projectId, projectName }: { projectI
               className="btn btn-secondary"
               style={{ fontSize: "0.875rem" }}
             >
-              Open in GitHub
+              Open cloud dashboard
             </a>
           )}
           <button type="button" className="btn btn-secondary" onClick={load} disabled={loading} style={{ fontSize: "0.875rem" }}>
@@ -97,28 +97,28 @@ export default function DeploymentsClient({ projectId, projectName }: { projectI
 
       {data?.githubError && (
         <div className="alert alert-error" style={{ marginBottom: "1rem" }}>
-          Could not load GitHub Actions: {data.githubError}
+          Could not load cloud build status: {data.githubError}
         </div>
       )}
 
       {!data?.githubConfigured && (
         <div className="alert" style={{ marginBottom: "1rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
-          GitHub App credentials not configured — showing builder publish history only.
+          Online storage not configured — showing upload history from this app only.
         </div>
       )}
 
       {hasActive && (
         <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "1rem" }}>
-          Auto-refreshing every 15s while a deployment is in progress.
+          Auto-refreshing every 15s while an upload is in progress.
         </p>
       )}
 
       {loading && deployments.length === 0 ? (
-        <div className="card"><p style={{ color: "var(--muted)" }}>Loading deployments…</p></div>
+        <div className="card"><p style={{ color: "var(--muted)" }}>Loading release history…</p></div>
       ) : deployments.length === 0 ? (
         <div className="card">
           <p style={{ color: "var(--muted)" }}>
-            No releases yet. Publish from the builder to create a tag and trigger the Release Build workflow.
+            No uploads yet. Use <strong>Upload to cloud</strong> in the builder after saving your changes.
           </p>
         </div>
       ) : (
@@ -127,7 +127,7 @@ export default function DeploymentsClient({ projectId, projectName }: { projectI
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left" }}>
                 <th style={{ padding: "0.75rem 1rem", color: "var(--muted)", fontWeight: 500 }}>Release</th>
-                <th style={{ padding: "0.75rem 1rem", color: "var(--muted)", fontWeight: 500 }}>GitHub Actions</th>
+                <th style={{ padding: "0.75rem 1rem", color: "var(--muted)", fontWeight: 500 }}>Cloud build</th>
                 <th style={{ padding: "0.75rem 1rem", color: "var(--muted)", fontWeight: 500 }}>Status</th>
                 <th style={{ padding: "0.75rem 1rem", color: "var(--muted)", fontWeight: 500 }}>Date</th>
               </tr>
@@ -149,7 +149,7 @@ export default function DeploymentsClient({ projectId, projectName }: { projectI
                         rel="noopener noreferrer"
                         style={{ fontSize: "0.75rem", display: "inline-block", marginTop: "0.25rem" }}
                       >
-                        GitHub Release
+                        View release
                       </a>
                     )}
                   </td>

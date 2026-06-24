@@ -12,6 +12,20 @@ export async function requireAuth() {
   return { error: null, session }
 }
 
+export async function requireAdmin() {
+  const { error, session } = await requireAuth()
+  if (error) return { error, session: null }
+
+  if (!session!.user.isAdmin) {
+    return {
+      error: NextResponse.json({ error: "Admin access required" }, { status: 403 }),
+      session: null,
+    }
+  }
+
+  return { error: null, session }
+}
+
 export async function getProjectMembership(projectId: string, userId: string) {
   return prisma.projectMember.findUnique({
     where: { projectId_userId: { projectId, userId } },

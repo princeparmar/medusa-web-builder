@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   DndContext,
   closestCenter,
@@ -21,10 +21,10 @@ import { CSS } from "@dnd-kit/utilities"
 import { PropertyForm, initialValuesFromSchema } from "@/components/builder/PropertyForm"
 import { BrandPanel } from "@/components/builder/BrandPanel"
 import { ComponentPalette, type RegistrySection } from "@/components/builder/ComponentPalette"
-import { LivePreviewPanel } from "@/components/builder/LivePreviewPanel"
+import { StorefrontLivePreview } from "@/components/builder/StorefrontLivePreview"
 import { isLayoutShellPackage, stripLayoutShells } from "@mwb/registry/layout-shell"
-import { brandPreviewStyle } from "@/lib/brand-config"
 import { BrandFontStyles } from "@/components/BrandFontStyles"
+import { persistBuilderState } from "@/lib/persist-project-config"
 import "@/components/builder/builder.css"
 
 type PageEntry = {
@@ -85,12 +85,14 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
   const [sectionProps, setSectionProps] = useState<Record<string, unknown>>({})
   const [activeRoute, setActiveRoute] = useState("/")
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null)
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [publishing, setPublishing] = useState(false)
   const [message, setMessage] = useState("")
+  const [previewSaveToken, setPreviewSaveToken] = useState(0)
   const [rightTab, setRightTab] = useState<"section" | "brand">("section")
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop")
+  const dataLoadedRef = useRef(false)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipAutoSaveRef = useRef(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -98,10 +100,9 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
   )
 
   const loadData = useCallback(async () => {
-    const [pagesRes, registryRes, draftsRes] = await Promise.all([
+    const [pagesRes, registryRes] = await Promise.all([
       fetch(`/api/projects/${projectId}/pages`),
       fetch(`/api/projects/${projectId}/registry?pageType=${encodeURIComponent(activeRoute)}`),
-      fetch(`/api/projects/${projectId}/drafts`),
     ])
 
     if (pagesRes.ok) {
@@ -121,11 +122,7 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
       const data = await registryRes.json()
       setSections(data.sections ?? [])
     }
-    if (draftsRes.ok) {
-      const drafts = await draftsRes.json()
-      const active = drafts.find((d: { isActive: boolean }) => d.isActive)
-      setActiveDraftId(active?.id ?? drafts[0]?.id ?? null)
-    }
+    dataLoadedRef.current = true
   }, [projectId, activeRoute])
 
   useEffect(() => {
@@ -213,48 +210,45 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
     setRightTab("section")
   }
 
-  async function saveDraft() {
-    setSaving(true)
-    setMessage("")
-    const pagesToSave = pages.map((p) => ({
-      ...p,
-      segments: stripLayoutShells(p.segments),
-    }))
-    await fetch(`/api/projects/${projectId}/pages`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pages: pagesToSave, brand, sectionProps }),
-    })
+  const flushSave = useCallback(
+    async (rebuildStorefront = true) => {
+      setSaving(true)
+      setMessage("")
+      const result = await persistBuilderState(
+        projectId,
+        { pages, brand, sectionProps },
+        { rebuildStorefront }
+      )
+      setSaving(false)
+      if (result.ok) {
+        setPreviewSaveToken((t) => t + 1)
+        setMessage("Saved to pages.config.json")
+      } else {
+        setMessage(result.error ?? "Save failed")
+      }
+      setTimeout(() => setMessage(""), 3000)
+    },
+    [projectId, pages, brand, sectionProps]
+  )
 
-    if (activeDraftId) {
-      await fetch(`/api/projects/${projectId}/drafts/${activeDraftId}/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "chore: save draft from builder" }),
-      })
+  useEffect(() => {
+    if (!dataLoadedRef.current) return
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false
+      return
     }
-    setSaving(false)
-    setMessage("Draft saved")
-    setTimeout(() => setMessage(""), 3000)
-  }
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    persistTimerRef.current = setTimeout(() => {
+      void flushSave(true)
+    }, 900)
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    }
+  }, [pages, sectionProps, brand, flushSave])
 
-  async function publish() {
-    if (!activeDraftId) return
-    setPublishing(true)
-    await saveDraft()
-    const res = await fetch(`/api/projects/${projectId}/publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        draftId: activeDraftId,
-        mergeToMain: true,
-        releaseNotes: "Published from Medusa Web Builder",
-      }),
-    })
-    setPublishing(false)
-    if (res.ok) setMessage("Publish queued — check Deployments")
-    else setMessage("Publish failed")
-    setTimeout(() => setMessage(""), 4000)
+  async function saveDraft() {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    await flushSave(true)
   }
 
   const selectedSection = sections.find((s) => s.packageName === selectedSegment)
@@ -271,12 +265,12 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
           </span>
         </div>
         <div className="builder-toolbar-actions">
-          <button type="button" className="btn btn-secondary" onClick={saveDraft} disabled={saving}>
-            {saving ? "Saving…" : "Save draft"}
+          <button type="button" className="btn btn-primary" onClick={saveDraft} disabled={saving}>
+            {saving ? "Saving…" : "Save now"}
           </button>
-          <button type="button" className="btn btn-primary" onClick={publish} disabled={publishing || !activeDraftId}>
-            {publishing ? "Publishing…" : "Publish"}
-          </button>
+          {saving && (
+            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Updating pages.config.json…</span>
+          )}
         </div>
       </div>
 
@@ -342,7 +336,7 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
         {/* Center: live preview */}
         <main className="builder-canvas">
           <div className="builder-canvas-toolbar">
-            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Live preview</span>
+            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Storefront preview</span>
             <div className="builder-viewport-toggle">
               <button
                 type="button"
@@ -360,25 +354,15 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
               </button>
             </div>
             <span style={{ fontSize: "0.6875rem", color: "var(--muted)" }}>
-              Click a section to edit
+              Pick a section in Page structure to edit
             </span>
           </div>
           <div className="builder-preview-scroll">
-            <div
-              className={`builder-preview-frame${viewport === "mobile" ? " mobile" : ""}`}
-              style={brandPreviewStyle(brand)}
-            >
-              <LivePreviewPanel
+            <div className={`builder-preview-frame${viewport === "mobile" ? " mobile" : ""}`}>
+              <StorefrontLivePreview
                 projectId={projectId}
                 route={activeRoute}
-                pages={pages}
-                segments={segments}
-                layout={currentPage?.layout ?? "main"}
-                sections={sections}
-                sectionProps={sectionProps}
-                brand={brand}
-                selectedSegment={selectedSegment}
-                onSelectSegment={selectSegment}
+                previewSaveToken={previewSaveToken}
               />
             </div>
           </div>
@@ -431,7 +415,7 @@ export default function BuilderClient({ projectId }: { projectId: string }) {
                 <div style={{ textAlign: "center", padding: "2rem 0.5rem", color: "var(--muted)" }}>
                   <p style={{ fontSize: "0.875rem", marginBottom: "0.5rem" }}>No section selected</p>
                   <p style={{ fontSize: "0.75rem" }}>
-                    Click a block in the preview or pick one from Page structure to edit its properties.
+                    Select a section from Page structure on the left to edit its properties.
                   </p>
                 </div>
               )

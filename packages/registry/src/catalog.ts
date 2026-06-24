@@ -27,7 +27,7 @@ export type SectionCatalogEntry = {
 }
 
 export const DEFAULT_STOREFRONT_COMPONENTS_REPO =
-  "https://github.com/pradip1995/storefront-components"
+  "https://github.com/princeparmar/storefront-components"
 
 function kebabToCamel(value: string): string {
   return value.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())

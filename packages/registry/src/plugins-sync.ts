@@ -146,6 +146,10 @@ function inferCategory(packageName: string): string {
 export async function syncPluginsCatalogToDb(): Promise<number> {
   let count = 0
   for (const plugin of PLUGIN_CATALOG) {
+    const settings = mergePluginSettings(
+      plugin.packageName,
+      plugin.settings as import("./schemas").BuilderSettings | undefined
+    )
     await prisma.pluginRegistry.upsert({
       where: { packageName: plugin.packageName },
       create: {
@@ -156,7 +160,8 @@ export async function syncPluginsCatalogToDb(): Promise<number> {
         version: plugin.version,
         latestVersion: plugin.latestVersion ?? plugin.version,
         medusaResolve: plugin.medusaResolve,
-        settingsSchemaJson: plugin.settings ?? { version: "1", fields: [] },
+        category: plugin.category,
+        settingsSchemaJson: settings as object,
         isBuiltin: true,
       },
       update: {
@@ -165,7 +170,8 @@ export async function syncPluginsCatalogToDb(): Promise<number> {
         githubRepo: plugin.githubRepo,
         latestVersion: plugin.latestVersion ?? plugin.version,
         medusaResolve: plugin.medusaResolve,
-        settingsSchemaJson: plugin.settings ?? undefined,
+        category: plugin.category,
+        settingsSchemaJson: settings as object,
       },
     })
     count++
@@ -323,10 +329,11 @@ export async function registerCustomPluginGithubRepo(
 export function enrichPluginRecord(plugin: {
   packageName: string
   displayName: string
-  githubRepo: string
+  githubRepo: string | null
   version: string
   latestVersion: string | null
   description?: string | null
+  category?: string | null
   medusaResolve: string
   settingsSchemaJson: unknown
   isBuiltin: boolean
@@ -335,9 +342,9 @@ export function enrichPluginRecord(plugin: {
   return {
     ...plugin,
     description: plugin.description ?? catalog?.description ?? null,
-    category: plugin.isBuiltin
-      ? (catalog?.category ?? inferCategory(plugin.packageName))
-      : "custom",
+    category:
+      plugin.category ??
+      (plugin.isBuiltin ? (catalog?.category ?? inferCategory(plugin.packageName)) : "custom"),
     latestVersion: plugin.latestVersion ?? plugin.version,
     updateAvailable: (plugin.latestVersion ?? plugin.version) !== plugin.version,
   }

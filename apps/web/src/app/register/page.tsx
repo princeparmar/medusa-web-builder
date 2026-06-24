@@ -49,8 +49,12 @@ export default function RegisterPage() {
           <h1>Check your email</h1>
           <p style={{ marginTop: "1rem", color: "var(--muted)" }}>
             We sent a verification link to <strong>{email}</strong>. Check Mailpit at{" "}
-            <a href="http://localhost:8025" target="_blank" rel="noreferrer">
-              localhost:8025
+            <a
+              href={process.env.NEXT_PUBLIC_MAILPIT_URL ?? "http://localhost:8125"}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {process.env.NEXT_PUBLIC_MAILPIT_URL?.replace(/^https?:\/\//, "") ?? "localhost:8125"}
             </a>{" "}
             in local dev.
           </p>

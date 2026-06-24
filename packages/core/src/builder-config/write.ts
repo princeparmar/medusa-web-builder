@@ -12,6 +12,7 @@ import type { BuilderSettings } from "../builder-config/types"
 import type { BuilderBindingsFile } from "./bindings"
 import { emptyBindingsFile } from "./bindings"
 import { readProjectFile, writeProjectFile } from "../config/index"
+import { readPagesConfigFileFromRepo, buildPagesConfigFromBuilder } from "../config/pages-config"
 import { readBrandConfig } from "../scaffold/index"
 
 export type WriteBuilderArtifactsParams = {
@@ -36,8 +37,18 @@ export async function writeBuilderArtifacts(params: WriteBuilderArtifactsParams)
 
   await writeProjectFile(repoPath, "storefront/builder/section-props.json", sectionProps)
   await writeProjectFile(repoPath, "storefront/builder/sections.config.json", compiled.sectionsConfig)
-  await writeProjectFile(repoPath, "storefront/builder/segment-data.json", compiled.segmentData)
   await writeProjectFile(repoPath, "storefront/builder/brand.json", brand)
+
+  const existingFile = await readPagesConfigFileFromRepo(repoPath)
+  const pagesConfig = buildPagesConfigFromBuilder({
+    pages: pages as PageEntry[],
+    sectionProps,
+    brand,
+    sections,
+    existingFile,
+  })
+  const { writePagesConfigFileToRepo } = await import("../config/pages-config")
+  await writePagesConfigFileToRepo(repoPath, pagesConfig)
 
   const pluginsConfig =
     (await readProjectFile<PluginsConfigFile>(repoPath, "backend/plugins.config.json")) ?? {}

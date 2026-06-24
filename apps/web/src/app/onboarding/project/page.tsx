@@ -35,8 +35,10 @@ export default function OnboardingProjectPage() {
 
   return (
     <main className="container" style={{ maxWidth: 480, paddingTop: "3rem" }}>
-      <h1>Create your first project</h1>
-      <p style={{ color: "var(--muted)", margin: "0.5rem 0 2rem" }}>Step 2 of 2</p>
+      <h1>Create your shop</h1>
+      <p style={{ color: "var(--muted)", margin: "0.5rem 0 2rem" }}>
+        Step 2 of 2 — scaffolded into <code>shops/your-shop-name</code>
+      </p>
 
       {error && <div className="alert alert-error">{JSON.stringify(error)}</div>}
 
@@ -57,7 +59,7 @@ export default function OnboardingProjectPage() {
           </select>
         </div>
         <p style={{ fontSize: "0.8125rem", color: "var(--muted)", marginBottom: "1rem" }}>
-          A private repo will be created at medusa-storefronts/storefront-&#123;uuid&#125;
+          Shop folder: <code>shops/&#123;name&#125;</code>. Optional GitHub repo at medusa-storefronts/storefront-&#123;uuid&#125;.
         </p>
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? "Creating..." : "Create project"}

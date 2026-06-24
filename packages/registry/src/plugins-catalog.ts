@@ -34,15 +34,15 @@ function plugin(
 
 /** Catalog aligned with medusa-plugins monorepo + create-storefront-app presets */
 export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
-  plugin("medusa-product-helper", "Product Helper", "Product utilities and helpers for Medusa admin", "0.0.71", "catalog"),
+  plugin("medusa-product-helper", "Product Helper", "Product utilities and helpers for Medusa admin", "0.0.73", "catalog"),
   plugin("medusa-dynamic-metadata", "Dynamic Metadata", "Custom metadata fields on products and entities", "0.0.11", "catalog"),
   plugin("medusa-review-rating", "Review & Rating", "Product reviews and star ratings", "0.0.38", "marketing"),
   plugin("medusa-contact-us", "Contact Us", "Storefront email subscriptions and contact opt-ins", "0.0.29", "marketing"),
-  plugin("customer-registration", "Customer Registration", "Custom customer registration flows for the storefront", "0.0.126", "auth"),
+  plugin("customer-registration", "Customer Registration", "Custom customer registration flows for the storefront", "0.0.132", "auth"),
   plugin("stock-monitoring", "Stock Monitoring", "Low-stock alerts and inventory monitoring emails", "0.0.6", "inventory"),
   plugin("medusa-invoice-sbl", "Invoice (SBL)", "Invoice generation for orders", "0.0.12", "orders"),
-  plugin("order-management", "Order Management", "Order notifications, SMTP, and storefront order workflows", "0.0.79", "orders"),
-  plugin("medusa-shiprocket-fulfillment-sbl", "Shiprocket Fulfillment", "Shiprocket shipping and fulfillment integration", "0.0.27", "fulfillment"),
+  plugin("order-management", "Order Management", "Order notifications, SMTP, and storefront order workflows", "0.0.80", "orders"),
+  plugin("medusa-shiprocket-fulfillment-sbl", "Shiprocket Fulfillment", "Shiprocket shipping and fulfillment integration", "0.0.30", "fulfillment"),
   plugin("medusa-notification-token-management", "Notification Tokens", "Push notification device token management", "0.0.2", "notifications"),
   plugin("medusa-customer-file-upload", "Customer File Upload", "Allow customers to upload files on the storefront", "0.0.2", "content"),
   plugin("medusa-analytics", "Analytics", "Store analytics and reporting", "0.0.25", "analytics"),

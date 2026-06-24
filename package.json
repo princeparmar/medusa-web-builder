@@ -2,9 +2,10 @@
   "name": "medusa-web-builder",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
+    "dev": "pnpm --parallel dev:web dev:worker",
     "dev:web": "pnpm --filter @mwb/web dev",
     "dev:worker": "pnpm --filter @mwb/worker dev",
+    "dev:all": "pnpm --parallel dev:web dev:worker",
     "build": "pnpm -r build",
     "db": "node scripts/db.mjs",
     "db:generate": "node scripts/db.mjs generate",
@@ -18,7 +19,13 @@
     "db:studio": "node scripts/db.mjs studio",
     "postinstall": "pnpm db:generate",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "sync:registry-versions": "node scripts/sync-registry-versions.mjs",
+    "create:test-shop": "pnpm --filter @mwb/worker exec tsx scripts/create-test-shop.ts",
+    "create:admin": "pnpm --filter @mwb/worker exec tsx ../web/scripts/create-admin.ts",
+    "seed:registry": "pnpm --filter @mwb/worker exec tsx ../../scripts/seed-registry.ts",
+    "generate:pages-config-template": "pnpm --filter @mwb/worker exec tsx ../../scripts/generate-pages-config-template.mts",
+    "publish:ecosystem": "bash scripts/publish-ecosystem.sh"
   },
   "engines": {
     "node": ">=20"

@@ -1,22 +1,17 @@
 import { mkdir } from "fs/promises"
-import { join, resolve } from "path"
+import { join } from "path"
 import simpleGit, { type SimpleGit } from "simple-git"
+import { getShopPath, getShopsRoot } from "../shops/paths"
 
-export function getWorkspaceRoot(): string {
-  const root = process.env.WORKSPACE_ROOT ?? "./workspaces"
-  return resolve(root)
+export { getShopPath, getShopsRoot, getProjectRepoPath, getWorkspaceRoot } from "../shops/paths"
+
+/** @deprecated Use getShopPath(slug) */
+export function getProjectWorkspacePathLegacy(projectId: string): string {
+  return join(getShopsRoot(), projectId)
 }
 
-export function getProjectWorkspacePath(projectId: string): string {
-  return join(getWorkspaceRoot(), projectId)
-}
-
-export function getProjectRepoPath(projectId: string): string {
-  return join(getProjectWorkspacePath(projectId), `storefront-${projectId}`)
-}
-
-export async function ensureWorkspaceDir(projectId: string): Promise<string> {
-  const dir = getProjectWorkspacePath(projectId)
+export async function ensureWorkspaceDir(_projectId: string): Promise<string> {
+  const dir = getShopsRoot()
   await mkdir(dir, { recursive: true })
   return dir
 }
@@ -38,7 +33,6 @@ function isOriginExistsError(err: unknown): boolean {
   return /remote origin already exists/i.test(msg)
 }
 
-/** Set origin URL, adding the remote first when missing. Safe to call repeatedly. */
 async function ensureOriginRemote(git: SimpleGit, remoteUrl: string): Promise<void> {
   try {
     await git.remote(["set-url", "origin", remoteUrl])
@@ -104,7 +98,6 @@ function isBenignPushError(err: unknown): boolean {
   return msg.includes("Everything up-to-date") || msg.includes("already up to date")
 }
 
-/** Initialize (if needed), commit, set origin, and push to GitHub. Safe to retry. */
 export async function pushRepoToRemote(
   repoPath: string,
   remoteUrl: string,
@@ -139,7 +132,6 @@ export async function initAndPush(params: {
   )
 }
 
-/** Push an existing local repo to GitHub (adds origin if missing). */
 export async function pushExistingRepoToRemote(
   repoPath: string,
   remoteUrl: string,
@@ -195,4 +187,56 @@ export async function getCurrentBranch(repoPath: string): Promise<string> {
 export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
   const git = openRepo(repoPath)
   await git.checkout(branch)
+}
+
+export type CommitEntry = {
+  sha: string
+  message: string
+  date: string
+  author: string
+}
+
+export async function getCommitHistory(
+  repoPath: string,
+  maxCount = 40
+): Promise<CommitEntry[]> {
+  const git = openRepo(repoPath)
+  const log = await git.log({ maxCount })
+  return log.all.map((entry) => ({
+    sha: entry.hash.slice(0, 7),
+    message: entry.message,
+    date: entry.date,
+    author: entry.author_name,
+  }))
+}
+
+export async function listLocalBranches(repoPath: string): Promise<string[]> {
+  const git = openRepo(repoPath)
+  const branches = await git.branchLocal()
+  return branches.all.filter((b) => b !== "HEAD")
+}
+
+export async function pullFromRemote(repoPath: string, branch: string): Promise<string> {
+  const git = openRepo(repoPath)
+  await git.checkout(branch)
+  const result = await git.pull("origin", branch)
+  const summary = result.summary
+  return summary.changes > 0 ? `Updated ${summary.changes} file(s)` : "Already up to date"
+}
+
+export async function hasRemoteOrigin(repoPath: string): Promise<boolean> {
+  const git = openRepo(repoPath)
+  try {
+    const remotes = await git.getRemotes()
+    return remotes.some((r) => r.name === "origin")
+  } catch {
+    return false
+  }
+}
+
+export async function pushCurrentBranch(repoPath: string): Promise<void> {
+  const git = openRepo(repoPath)
+  const { current } = await git.status()
+  const branch = current ?? "main"
+  await git.push("origin", branch)
 }

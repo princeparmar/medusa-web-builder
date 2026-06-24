@@ -1,6 +1,11 @@
 import type { BuilderSettings } from "../builder-config/types"
 import { applySchemaDefaults } from "../builder-config"
 import { writeBuilderArtifacts } from "../builder-config/write"
+import {
+  enrichPagesConfigWithSegmentDefaults,
+  readPagesConfigFileFromRepo,
+  writePagesConfigFileToRepo,
+} from "../config/pages-config"
 import { readPagesConfig, readBrandConfig } from "./index"
 
 export const LAYOUT_SHELL_PACKAGES = [
@@ -21,7 +26,7 @@ export type RegistrySectionSeed = {
 }
 
 /** Copy aligned with create-storefront-app full preset + my-shop homepage defaults. */
-const FIRST_SETUP_SECTION_OVERRIDES: Record<string, Record<string, unknown>> = {
+export const FIRST_SETUP_SECTION_OVERRIDES: Record<string, Record<string, unknown>> = {
   "@pradip1995/segment-hero": {
     "homeBanner.title": "Grace Woven In Every Thread",
     "homeBanner.subtitle": "Luxury Sarees • Curated For You",
@@ -102,6 +107,23 @@ export async function seedInitialBuilderState(
       settingsSchema: schema,
     })
   }
+
+  const pagesFile = enrichPagesConfigWithSegmentDefaults({
+    file: await readPagesConfigFileFromRepo(repoPath).catch(() => ({
+      version: "1",
+      pages: rawPages.map((p) => ({
+        route: p.route,
+        workflow: "",
+        layout: "",
+        segments: p.segments ?? [],
+      })),
+    })),
+    sections: sectionMetas,
+    brand,
+    overrides: FIRST_SETUP_SECTION_OVERRIDES,
+    replaceExisting: true,
+  })
+  await writePagesConfigFileToRepo(repoPath, pagesFile)
 
   await writeBuilderArtifacts({
     repoPath,

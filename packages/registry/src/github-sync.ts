@@ -1,6 +1,3 @@
-import { readFile } from "fs/promises"
-import { join } from "path"
-import { existsSync } from "fs"
 import { prisma } from "@mwb/db"
 import { BuilderSettingsSchema } from "./schemas/index"
 import {
@@ -204,11 +201,6 @@ export async function registerCustomGithubRepo(githubRepo: string, branch = "mai
 export async function syncDefaultStorefrontComponents(): Promise<number> {
   const repo =
     process.env.STOREFRONT_COMPONENTS_GITHUB ?? DEFAULT_STOREFRONT_COMPONENTS_REPO
-  const path = process.env.STOREFRONT_COMPONENTS_PATH
-
-  if (path && existsSync(path)) {
-    return syncSectionsFromLocalPath(path, repo)
-  }
 
   try {
     return await syncSectionsFromGithub(repo, "main", true)
@@ -216,81 +208,6 @@ export async function syncDefaultStorefrontComponents(): Promise<number> {
     console.warn("GitHub section sync failed, using built-in catalog:", err)
     return syncCatalogToDb()
   }
-}
-
-async function syncSectionsFromLocalPath(componentsPath: string, githubRepo: string): Promise<number> {
-  const packagesDir = join(componentsPath, "packages")
-  const { readdir, stat } = await import("fs/promises")
-  const entries = await readdir(packagesDir)
-  let count = 0
-
-  for (const entry of entries) {
-    if (!entry.startsWith("segment-") && !entry.startsWith("layout-")) continue
-    const pkgDir = join(packagesDir, entry)
-    if (!(await stat(pkgDir)).isDirectory()) continue
-
-    const packageName = `@pradip1995/${entry}`
-    const catalog = catalogEntryForPackage(packageName, githubRepo)
-    let version = catalog?.version ?? "0.1.0"
-
-    const pkgJsonPath = join(pkgDir, "package.json")
-    if (existsSync(pkgJsonPath)) {
-      const pkg = JSON.parse(await readFile(pkgJsonPath, "utf8"))
-      if (pkg.version) version = pkg.version
-    }
-
-    let settings = mergeSegmentSettings(entry, null)
-    const settingsPath = join(pkgDir, "builder.settings.json")
-    if (existsSync(settingsPath)) {
-      settings = mergeSegmentSettings(
-        entry,
-        BuilderSettingsSchema.parse(JSON.parse(await readFile(settingsPath, "utf8")))
-      )
-    }
-
-    const componentType = entry.startsWith("layout-") ? "layout" : "segment"
-
-    let manifestJson = (catalog?.manifest ?? {
-      id: entry.replace(/^(segment|layout)-/, ""),
-      type: componentType,
-      version,
-    }) as Record<string, unknown>
-
-    const manifestPath = join(pkgDir, "src", "manifest.ts")
-    if (existsSync(manifestPath)) {
-      const manifestSrc = await readFile(manifestPath, "utf8")
-      const dataKeyMatch = manifestSrc.match(/dataKey:\s*"([^"]+)"/)
-      if (dataKeyMatch) {
-        manifestJson = { ...manifestJson, dataKey: dataKeyMatch[1] }
-      }
-    }
-
-    await prisma.sectionRegistry.upsert({
-      where: { packageName },
-      create: {
-        packageName,
-        displayName: catalog?.displayName ?? packageToDisplayName(packageName),
-        githubRepo,
-        version,
-        latestVersion: version,
-        componentType,
-        category: catalog?.category ?? inferCategoryFromName(entry),
-        description: catalog?.description ?? `${componentType} component`,
-        manifestJson: manifestJson as object,
-        settingsSchemaJson: settings as object,
-        pageTypes: catalog?.pageTypes ?? [],
-        isBuiltin: true,
-      },
-      update: {
-        version,
-        latestVersion: version,
-        settingsSchemaJson: settings as object,
-        manifestJson: manifestJson as object,
-      },
-    })
-    count++
-  }
-  return count
 }
 
 export async function syncCatalogToDb(): Promise<number> {
@@ -320,7 +237,9 @@ export async function syncCatalogToDb(): Promise<number> {
         category: section.category,
         description: section.description,
         manifestJson: (section.manifest ?? {}) as object,
-        settingsSchemaJson: section.settings ?? undefined,
+        ...(section.settings !== undefined
+          ? { settingsSchemaJson: section.settings as object }
+          : {}),
         pageTypes: section.pageTypes,
       },
     })

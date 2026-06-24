@@ -1,39 +1,51 @@
 import { exec } from "child_process"
 import { promisify } from "util"
-import { join, resolve } from "path"
+import { join } from "path"
 import { readFile, writeFile, mkdir } from "fs/promises"
 import { existsSync } from "fs"
-import { getProjectRepoPath, getWorkspaceRoot } from "../git/index"
+import { getShopPath, getShopsRoot } from "../shops/paths"
+import {
+  type PageConfigEntry,
+  type PagesConfigFile,
+  type SegmentRef,
+  readPagesConfigFileFromRepo,
+  writePagesConfigFileToRepo,
+  expandPagesConfigForBuilder,
+  segmentPackageName,
+  hasSegmentData,
+} from "../config/pages-config"
 
 const execAsync = promisify(exec)
 
 export type ScaffoldOptions = {
   projectId: string
+  shopSlug: string
   preset?: "full" | "minimal"
   defaultRegion?: string
 }
 
 export async function scaffoldStorefrontProject(options: ScaffoldOptions): Promise<string> {
-  const { projectId, preset = "full", defaultRegion = "in" } = options
-  const workspaceRoot = getWorkspaceRoot()
-  const workspaceDir = join(workspaceRoot, projectId)
-  const projectName = `storefront-${projectId}`
-  const repoPath = resolve(join(workspaceDir, projectName))
+  const { shopSlug, preset = "full", defaultRegion = "in" } = options
+  const shopsRoot = getShopsRoot()
+  const repoPath = getShopPath(shopSlug)
 
-  await mkdir(workspaceDir, { recursive: true })
+  if (existsSync(join(repoPath, "storefront"))) {
+    await initBuilderConfigFiles(repoPath)
+    return repoPath
+  }
 
   const cmd = [
     "npx",
-    "@pradip1995/create-storefront-app",
-    projectName,
-    `--dir "${workspaceDir}"`,
+    "@pradip1995/create-storefront-app@0.5.0",
+    shopSlug,
+    `--dir "${shopsRoot}"`,
     `--preset ${preset}`,
     `--default-region ${defaultRegion}`,
     "--no-prompt",
     "--no-install",
   ].join(" ")
 
-  await execAsync(cmd, { cwd: workspaceRoot, timeout: 300_000 })
+  await execAsync(cmd, { cwd: shopsRoot, timeout: 300_000 })
 
   await initBuilderConfigFiles(repoPath)
 
@@ -98,14 +110,6 @@ async function initBuilderConfigFiles(repoPath: string): Promise<void> {
     )
   }
 
-  const segmentDataPath = join(builderDir, "segment-data.json")
-  if (!existsSync(segmentDataPath)) {
-    await writeFile(
-      segmentDataPath,
-      JSON.stringify({ version: "1", updatedAt: new Date().toISOString(), data: {} }, null, 2) + "\n"
-    )
-  }
-
   const bindingsPath = join(repoPath, "backend", "builder-bindings.json")
   if (!existsSync(bindingsPath)) {
     await mkdir(join(repoPath, "backend"), { recursive: true })
@@ -114,17 +118,72 @@ async function initBuilderConfigFiles(repoPath: string): Promise<void> {
       JSON.stringify({ version: "1", plugins: {}, providers: {} }, null, 2) + "\n"
     )
   }
+
+  await ensureMwbGitignored(repoPath)
 }
 
-export async function readPagesConfig(repoPath: string): Promise<unknown[]> {
-  const path = join(repoPath, "storefront", "pages.config.json")
-  const content = await readFile(path, "utf8")
-  return JSON.parse(content)
+async function ensureMwbGitignored(repoPath: string): Promise<void> {
+  const gitignorePath = join(repoPath, ".gitignore")
+  const entry = ".mwb/"
+  if (!existsSync(gitignorePath)) {
+    await writeFile(gitignorePath, `${entry}\n`)
+    return
+  }
+  const content = await readFile(gitignorePath, "utf8")
+  if (!content.split("\n").some((line) => line.trim() === entry || line.trim() === ".mwb")) {
+    await writeFile(gitignorePath, content.endsWith("\n") ? `${content}${entry}\n` : `${content}\n${entry}\n`)
+  }
 }
 
-export async function writePagesConfig(repoPath: string, pages: unknown[]): Promise<void> {
-  const path = join(repoPath, "storefront", "pages.config.json")
-  await writeFile(path, JSON.stringify(pages, null, 2) + "\n")
+export async function readPagesConfig(repoPath: string): Promise<PageConfigEntry[]> {
+  const file = await readPagesConfigFileFromRepo(repoPath)
+  return expandPagesConfigForBuilder(file).pages
+}
+
+export async function readPagesConfigFile(repoPath: string): Promise<PagesConfigFile> {
+  return readPagesConfigFileFromRepo(repoPath)
+}
+
+export async function readBuilderState(repoPath: string): Promise<{
+  pages: Array<Omit<PageConfigEntry, "segments"> & { segments: string[] }>
+  sectionProps: Record<string, Record<string, unknown>>
+}> {
+  const file = await readPagesConfigFileFromRepo(repoPath)
+  return expandPagesConfigForBuilder(file)
+}
+
+export async function writePagesConfig(
+  repoPath: string,
+  pages: Array<Omit<PageConfigEntry, "segments"> & { segments: string[] }>
+): Promise<void> {
+  const existing = await readPagesConfigFileFromRepo(repoPath)
+
+  const resolveRef = (route: string, pkg: string): SegmentRef => {
+    const prevPage = existing.pages.find((p) => p.route === route)
+    const prevRef = prevPage?.segments.find((r) => segmentPackageName(r) === pkg)
+    if (prevRef && hasSegmentData(prevRef)) return prevRef
+    const chromeRef = existing.chrome?.find((r) => segmentPackageName(r) === pkg)
+    if (chromeRef && hasSegmentData(chromeRef)) return chromeRef
+    return pkg
+  }
+
+  await writePagesConfigFileToRepo(repoPath, {
+    ...existing,
+    pages: pages.map((page) => {
+      const prev = existing.pages.find((p) => p.route === page.route)
+      return {
+        route: page.route,
+        workflow: page.workflow ?? prev?.workflow ?? "",
+        layout: page.layout ?? prev?.layout ?? "",
+        metadata: page.metadata ?? prev?.metadata,
+        segments: page.segments.map((pkg) => resolveRef(page.route, pkg)),
+      }
+    }),
+  })
+}
+
+export async function writePagesConfigFile(repoPath: string, file: PagesConfigFile): Promise<void> {
+  await writePagesConfigFileToRepo(repoPath, file)
 }
 
 export async function readBrandConfig(repoPath: string): Promise<Record<string, unknown>> {
@@ -154,6 +213,6 @@ export async function writeSectionProps(
   await writeFile(path, JSON.stringify(props, null, 2) + "\n")
 }
 
-export { getProjectRepoPath }
+export { getShopPath } from "../shops/paths"
 export { seedInitialBuilderState, LAYOUT_SHELL_PACKAGES } from "./seed-defaults"
 export type { RegistrySectionSeed } from "./seed-defaults"

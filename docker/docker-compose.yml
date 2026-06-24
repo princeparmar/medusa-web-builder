@@ -1,5 +1,8 @@
 # Medusa Web Builder — Docker stack
 #
+# Host ports (override via ../.env — defaults avoid clashes with local postgres/redis/Next):
+#   web 3100, postgres 5433, redis 6380, mailpit UI 8125 / SMTP 1125, deploy-stub 9190
+#
 # Background jobs (BullMQ + Redis):
 #   web     → enqueues jobs to Redis when you scaffold, save, publish, sync registry, etc.
 #   worker  → consumes jobs (THIS is the queue processor — there is no separate "queue" container)
@@ -22,7 +25,7 @@ services:
       POSTGRES_PASSWORD: mwb
       POSTGRES_DB: medusa_web_builder
     ports:
-      - "5433:5432"
+      - "${MWB_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +38,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${MWB_REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,8 +49,8 @@ services:
     image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "${MWB_MAILPIT_UI_PORT:-8125}:8025"
+      - "${MWB_MAILPIT_SMTP_PORT:-1125}:1025"
 
   # Local stand-in for k8s/deploy-agent.yaml (receives deploy queue webhook POSTs)
   deploy-stub:
@@ -58,7 +61,7 @@ services:
       - ./deploy-stub:/app:ro
     command: ["node", "server.mjs"]
     ports:
-      - "9090:9090"
+      - "${MWB_DEPLOY_STUB_PORT:-9190}:9090"
     healthcheck:
       test:
         [
@@ -90,21 +93,21 @@ services:
     env_file:
       - ../.env
     ports:
-      - "3000:3000"
+      - "${MWB_WEB_PORT:-3100}:3000"
     environment:
       DATABASE_URL: postgresql://mwb:mwb@postgres:5432/medusa_web_builder
       REDIS_URL: redis://redis:6379
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-in-production-min-32-chars}
-      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:${MWB_WEB_PORT:-3100}
+      NEXT_PUBLIC_MAILPIT_URL: http://localhost:${MWB_MAILPIT_UI_PORT:-8125}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_FROM: noreply@medusa-web-builder.local
       GITHUB_ORG: medusa-storefronts
-      WORKSPACE_ROOT: /var/builder/workspaces
+      WORKSPACE_ROOT: /var/builder/shops
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-32-chars-min!!}
-      STOREFRONT_COMPONENTS_PATH: ${STOREFRONT_COMPONENTS_PATH:-}
     volumes:
-      - workspaces:/var/builder/workspaces
+      - ../../shops:/var/builder/shops
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -125,20 +128,19 @@ services:
       DATABASE_URL: postgresql://mwb:mwb@postgres:5432/medusa_web_builder
       REDIS_URL: redis://redis:6379
       GITHUB_ORG: medusa-storefronts
-      WORKSPACE_ROOT: /var/builder/workspaces
+      WORKSPACE_ROOT: /var/builder/shops
       GIT_USER_NAME: Medusa Web Builder
       GIT_USER_EMAIL: builder@medusa-web-builder.local
       DEPLOY_WEBHOOK_URL: http://deploy-stub:9090/deploy
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-32-chars-min!!}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
-      # Registry sync (paths optional; falls back to GitHub URLs from ../.env)
-      STOREFRONT_COMPONENTS_GITHUB: ${STOREFRONT_COMPONENTS_GITHUB:-https://github.com/pradip1995/storefront-components}
-      STOREFRONT_COMPONENTS_PATH: ${STOREFRONT_COMPONENTS_PATH:-}
+      # Registry sync (optional GitHub import; admin panel is source of truth)
+      STOREFRONT_COMPONENTS_GITHUB: ${STOREFRONT_COMPONENTS_GITHUB:-https://github.com/princeparmar/storefront-components}
       MEDUSA_PLUGINS_GITHUB: ${MEDUSA_PLUGINS_GITHUB:-https://github.com/SmartByteLabs/medusa-plugins}
       MEDUSA_PLUGINS_PATH: ${MEDUSA_PLUGINS_PATH:-}
     volumes:
-      - workspaces:/var/builder/workspaces
+      - ../../shops:/var/builder/shops
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -151,4 +153,3 @@ services:
 
 volumes:
   postgres_data:
-  workspaces:

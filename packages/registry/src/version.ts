@@ -13,5 +13,28 @@ export function compareVersions(a: string, b: string): number {
 }
 
 export function hasUpdateAvailable(installed: string, latest: string): boolean {
-  return compareVersions(latest, installed) > 0
+  return compareVersions(normalizeVersion(latest), normalizeVersion(installed)) > 0
+}
+
+export function normalizeVersion(version: string): string {
+  return version.replace(/^[\^~>=<]+/, "").trim()
+}
+
+/** Pick the highest semver from a list of version strings. */
+export function pickMaxVersion(versions: string[]): string {
+  const normalized = versions.map(normalizeVersion).filter(Boolean)
+  if (normalized.length === 0) return "0.0.0"
+  return normalized.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best))
+}
+
+export function resolvePluginLatestVersion(
+  installed: string,
+  registryLatest: string | null | undefined,
+  npmLatest: string | null | undefined
+): { latest: string; updateAvailable: boolean } {
+  const inst = normalizeVersion(installed)
+  const candidates = [inst, registryLatest, npmLatest].filter((v): v is string => Boolean(v))
+  const latest = pickMaxVersion(candidates)
+  const updateAvailable = compareVersions(latest, inst) > 0
+  return { latest, updateAvailable }
 }

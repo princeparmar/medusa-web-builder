@@ -1,49 +1,36 @@
 import type { Job } from "bullmq"
 import {
   syncBuiltinSections,
-  syncSectionsFromPath,
-  registerCustomGithubRepo,
-  syncDefaultStorefrontComponents,
+  syncPluginsCatalogToDb,
   refreshLatestVersionsFromGithub,
-  syncPluginsFromPath,
-  syncDefaultPlugins,
-  registerCustomPluginGithubRepo,
+  refreshPluginLatestVersionsFromNpm,
 } from "@mwb/registry"
 import type { RegistrySyncJob } from "@mwb/core/queue"
 
 export async function handleRegistrySync(job: Job<RegistrySyncJob>) {
-  const { type, githubRepo, branch } = job.data
+  const { type } = job.data
 
   switch (type) {
     case "sections": {
-      const path = process.env.STOREFRONT_COMPONENTS_PATH
-      const count = path ? await syncSectionsFromPath(path) : await syncDefaultStorefrontComponents()
-      await job.log(`Synced ${count} sections`)
+      const count = await syncBuiltinSections()
+      await job.log(`Imported ${count} sections from built-in catalog`)
       break
     }
     case "refresh-versions": {
-      const count = await refreshLatestVersionsFromGithub()
-      await job.log(`Refreshed ${count} section versions`)
+      const sections = await refreshLatestVersionsFromGithub()
+      const plugins = await refreshPluginLatestVersionsFromNpm()
+      await job.log(`Refreshed ${sections} section versions and ${plugins} plugin versions`)
       break
     }
     case "plugins": {
-      const path = process.env.MEDUSA_PLUGINS_PATH
-      const count = path ? await syncPluginsFromPath(path) : await syncDefaultPlugins()
-      await job.log(`Synced ${count} plugins`)
+      const count = await syncPluginsCatalogToDb()
+      await job.log(`Imported ${count} plugins from built-in catalog`)
       break
     }
-    case "github-repo": {
-      if (!githubRepo) throw new Error("githubRepo required")
-      const count = await registerCustomGithubRepo(githubRepo, branch)
-      await job.log(`Synced ${count} sections from ${githubRepo}`)
+    case "github-repo":
+    case "github-plugins-repo":
+      await job.log("Online repo sync is disabled — use the admin panel to register packages")
       break
-    }
-    case "github-plugins-repo": {
-      if (!githubRepo) throw new Error("githubRepo required")
-      const count = await registerCustomPluginGithubRepo(githubRepo, branch)
-      await job.log(`Synced ${count} plugins from ${githubRepo}`)
-      break
-    }
     default:
       throw new Error(`Unknown registry job type: ${type}`)
   }

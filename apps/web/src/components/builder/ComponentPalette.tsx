@@ -22,8 +22,6 @@ export type RegistrySection = {
 
 type RegistryResponse = {
   sections: RegistrySection[]
-  sources: Array<{ githubRepo: string; branch: string; displayName: string | null }>
-  storefrontComponentsRepo: string
 }
 
 const CATEGORY_ORDER = [
@@ -54,13 +52,8 @@ export function ComponentPalette({
 }) {
   const [sections, setSections] = useState<RegistrySection[]>([])
   const [allSections, setAllSections] = useState<RegistrySection[]>([])
-  const [sources, setSources] = useState<RegistryResponse["sources"]>([])
-  const [storefrontRepo, setStorefrontRepo] = useState("")
-  const [tab, setTab] = useState<"page" | "all" | "sources">("page")
-  const [githubRepo, setGithubRepo] = useState("")
-  const [branch, setBranch] = useState("main")
+  const [tab, setTab] = useState<"page" | "all">("page")
   const [message, setMessage] = useState("")
-  const [syncing, setSyncing] = useState(false)
   const [upgrading, setUpgrading] = useState<string | null>(null)
 
   const loadRegistry = useCallback(async () => {
@@ -70,8 +63,6 @@ export function ComponentPalette({
     if (!res.ok) return
     const data: RegistryResponse = await res.json()
     setSections(data.sections)
-    setSources(data.sources)
-    setStorefrontRepo(data.storefrontComponentsRepo)
 
     const allRes = await fetch(`/api/projects/${projectId}/registry?all=true`)
     if (allRes.ok) {
@@ -83,30 +74,6 @@ export function ComponentPalette({
   useEffect(() => {
     loadRegistry()
   }, [loadRegistry])
-
-  async function syncCatalog() {
-    setSyncing(true)
-    setMessage("")
-    const res = await fetch("/api/registry/sync", { method: "POST" })
-    setSyncing(false)
-    setMessage(res.ok ? "Sync queued — refresh in a few seconds" : "Sync failed")
-    setTimeout(loadRegistry, 3000)
-  }
-
-  async function registerRepo(e: React.FormEvent) {
-    e.preventDefault()
-    setMessage("")
-    const res = await fetch("/api/registry/sections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ githubRepo, branch }),
-    })
-    setMessage(res.ok ? "Repo sync queued" : "Failed to register repo")
-    if (res.ok) {
-      setGithubRepo("")
-      setTimeout(loadRegistry, 4000)
-    }
-  }
 
   async function upgradePackage(packageName: string) {
     setUpgrading(packageName)
@@ -121,7 +88,7 @@ export function ComponentPalette({
       setMessage(`Updated ${packageName} in package.json`)
       loadRegistry()
     } else {
-      setMessage("Upgrade failed")
+      setMessage("Update failed")
     }
   }
 
@@ -141,15 +108,11 @@ export function ComponentPalette({
   return (
     <div>
       <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
-        {tab === "page"
-          ? `Components for ${pageLabel}`
-          : tab === "all"
-            ? "All storefront components"
-            : "Section sources"}
+        {tab === "page" ? `Components for ${pageLabel}` : "All storefront components"}
       </p>
 
       <div style={{ display: "flex", gap: "0.25rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-        {(["page", "all", "sources"] as const).map((t) => (
+        {(["page", "all"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -161,18 +124,9 @@ export function ComponentPalette({
             }}
             onClick={() => setTab(t)}
           >
-            {t === "page" ? "This page" : t === "all" ? "All" : "Sources"}
+            {t === "page" ? "This page" : "All"}
           </button>
         ))}
-        <button
-          type="button"
-          className="btn btn-secondary"
-          style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem", marginLeft: "auto" }}
-          onClick={syncCatalog}
-          disabled={syncing}
-        >
-          {syncing ? "…" : "↻ Sync"}
-        </button>
       </div>
 
       {message && (
@@ -181,82 +135,39 @@ export function ComponentPalette({
         </div>
       )}
 
-      {tab === "sources" ? (
-        <div style={{ fontSize: "0.75rem" }}>
-          <div style={{ marginBottom: "1rem", padding: "0.5rem", background: "var(--surface)", borderRadius: "var(--radius)" }}>
-            <strong>Default repo</strong>
-            <div style={{ color: "var(--muted)", wordBreak: "break-all" }}>{storefrontRepo}</div>
-          </div>
-          {sources.map((s) => (
-            <div
-              key={s.githubRepo}
-              style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}
+      <div style={{ maxHeight: 420, overflow: "auto" }}>
+        {orderedKeys.length === 0 && (
+          <p style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
+            No components available yet. Ask your administrator to register section packages.
+          </p>
+        )}
+        {orderedKeys.map((key) => (
+          <div key={key} style={{ marginBottom: "1rem" }}>
+            <h4
+              style={{
+                fontSize: "0.65rem",
+                textTransform: "uppercase",
+                color: "var(--muted)",
+                marginBottom: "0.375rem",
+                letterSpacing: "0.04em",
+              }}
             >
-              <div>{s.displayName ?? s.githubRepo}</div>
-              <div style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
-                {s.githubRepo} ({s.branch})
-              </div>
-            </div>
-          ))}
-          <form onSubmit={registerRepo} style={{ marginTop: "1rem" }}>
-            <div className="form-group">
-              <label style={{ fontSize: "0.7rem" }}>Add GitHub repo</label>
-              <input
-                value={githubRepo}
-                onChange={(e) => setGithubRepo(e.target.value)}
-                placeholder="https://github.com/org/my-sections"
-                required
-                style={{ fontSize: "0.75rem" }}
+              {CATEGORY_LABELS[key as keyof typeof CATEGORY_LABELS] ?? key}
+              {tab === "page" && key === pageCategory ? " · matches page" : ""}
+            </h4>
+            {grouped[key].map((s) => (
+              <SectionCard
+                key={s.packageName}
+                section={s}
+                used={usedPackages.includes(s.packageName)}
+                upgrading={upgrading === s.packageName}
+                onAdd={() => onAdd(s.packageName)}
+                onUpgrade={() => upgradePackage(s.packageName)}
               />
-            </div>
-            <div className="form-group">
-              <label style={{ fontSize: "0.7rem" }}>Branch</label>
-              <input
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                style={{ fontSize: "0.75rem" }}
-              />
-            </div>
-            <button type="submit" className="btn btn-secondary" style={{ width: "100%", fontSize: "0.75rem" }}>
-              Register & sync
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div style={{ maxHeight: 420, overflow: "auto" }}>
-          {orderedKeys.length === 0 && (
-            <p style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
-              No components for this page. Try Sync or check All tab.
-            </p>
-          )}
-          {orderedKeys.map((key) => (
-            <div key={key} style={{ marginBottom: "1rem" }}>
-              <h4
-                style={{
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  color: "var(--muted)",
-                  marginBottom: "0.375rem",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {CATEGORY_LABELS[key as keyof typeof CATEGORY_LABELS] ?? key}
-                {tab === "page" && key === pageCategory ? " · matches page" : ""}
-              </h4>
-              {grouped[key].map((s) => (
-                <SectionCard
-                  key={s.packageName}
-                  section={s}
-                  used={usedPackages.includes(s.packageName)}
-                  upgrading={upgrading === s.packageName}
-                  onAdd={() => onAdd(s.packageName)}
-                  onUpgrade={() => upgradePackage(s.packageName)}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -290,14 +201,10 @@ function SectionCard({
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
         <strong>{section.displayName}</strong>
-        <span style={{ color: "var(--muted)", fontSize: "0.65rem" }}>
-          {section.componentType}
-        </span>
+        <span style={{ color: "var(--muted)", fontSize: "0.65rem" }}>{section.componentType}</span>
       </div>
       {section.description && (
-        <p style={{ color: "var(--muted)", margin: "0.25rem 0", fontSize: "0.7rem" }}>
-          {section.description}
-        </p>
+        <p style={{ color: "var(--muted)", margin: "0.25rem 0", fontSize: "0.7rem" }}>{section.description}</p>
       )}
       <div style={{ color: "var(--muted)", fontSize: "0.65rem", marginBottom: "0.375rem" }}>
         v{installed}

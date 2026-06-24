@@ -37,7 +37,8 @@ function applyEnvFile(path) {
     ) {
       value = value.slice(1, -1)
     }
-    if (process.env[key] === undefined) {
+    value = value.replace(/\\n/g, "\n").replace(/\\r/g, "\r")
+    if (process.env[key] === undefined || key === "WORKSPACE_ROOT") {
       process.env[key] = value
     }
   }

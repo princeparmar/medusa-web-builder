@@ -11,6 +11,7 @@ declare module "next-auth" {
     user: {
       id: string
       onboardingStep: string
+      isAdmin: boolean
     } & DefaultSession["user"]
   }
 }
@@ -41,6 +42,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           name: user.name,
           onboardingStep: user.onboardingStep,
+          isAdmin: user.isAdmin,
         }
       },
     }),

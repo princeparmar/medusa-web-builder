@@ -2,13 +2,18 @@ import { readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { existsSync } from "fs"
 
-export type PageConfigEntry = {
-  route: string
-  workflow: string
-  layout: string
-  segments: string[]
-  metadata?: { title?: string; description?: string }
-}
+export type { PageConfigEntry } from "./pages-config"
+export {
+  parsePagesConfigFile,
+  expandPagesConfigForBuilder,
+  buildPagesConfigFromBuilder,
+  enrichPagesConfigWithSegmentDefaults,
+  segmentPackageName,
+  readPagesConfigFileFromRepo,
+  writePagesConfigFileToRepo,
+  type PagesConfigFile,
+  type SegmentRef,
+} from "./pages-config"
 
 export async function readProjectFile<T>(repoPath: string, relativePath: string): Promise<T | null> {
   const fullPath = join(repoPath, relativePath)

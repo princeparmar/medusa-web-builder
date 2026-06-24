@@ -2,7 +2,11 @@ import type { Job } from "bullmq"
 import { readFile, writeFile, mkdir, cp } from "fs/promises"
 import { join, dirname } from "path"
 import { existsSync } from "fs"
+import { exec } from "child_process"
+import { promisify } from "util"
 import { prisma } from "@mwb/db"
+
+const execAsync = promisify(exec)
 import {
   scaffoldStorefrontProject,
   readPagesConfig,
@@ -47,11 +51,31 @@ export async function handleScaffold(job: Job<ProjectScaffoldJob>) {
   await job.updateProgress(10)
   await publishProgress(projectId, { step: "scaffolding", progress: 10 })
 
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } })
+
   try {
-    const repoPath = await scaffoldStorefrontProject({
-      projectId,
-      preset: preset as "full" | "minimal",
-      defaultRegion,
+    let repoPath = project.workspacePath ?? ""
+    if (!repoPath || !existsSync(join(repoPath, "storefront"))) {
+      repoPath = await scaffoldStorefrontProject({
+        projectId,
+        shopSlug: project.slug,
+        preset: preset as "full" | "minimal",
+        defaultRegion,
+      })
+    } else {
+      await job.log(`Using existing shop at ${repoPath}`)
+    }
+
+    const { ensureShopDatabase, writeShopEnv } = await import("@mwb/core/shops")
+    await ensureShopDatabase(project.slug)
+    await writeShopEnv(repoPath, project.slug, {})
+
+    await job.updateProgress(25)
+    await job.log("Installing backend dependencies (npm i)…")
+    await execAsync("npm i", {
+      cwd: join(repoPath, "backend"),
+      timeout: 600_000,
+      maxBuffer: 10 * 1024 * 1024,
     })
 
     const registry = await prisma.sectionRegistry.findMany()
@@ -66,28 +90,46 @@ export async function handleScaffold(job: Job<ProjectScaffoldJob>) {
 
     const hasGithub = githubCredentialsConfigured()
     if (hasGithub) {
-      const repo = await getOrCreateProjectRepo(projectId)
-      githubRepo = repo.fullName
-      githubRepoId = repo.repoId
-      cloneUrl = repo.cloneUrl
+      try {
+        const repo = await getOrCreateProjectRepo(projectId)
+        githubRepo = repo.fullName
+        githubRepoId = repo.repoId
+        cloneUrl = repo.cloneUrl
 
-      const releaseTemplate = join(process.cwd(), "templates", "project-release.yml")
-      if (existsSync(releaseTemplate)) {
-        await mkdir(join(repoPath, ".github", "workflows"), { recursive: true })
-        await cp(releaseTemplate, join(repoPath, ".github", "workflows", "release.yml"))
+        const releaseTemplate = join(process.cwd(), "templates", "project-release.yml")
+        if (existsSync(releaseTemplate)) {
+          await mkdir(join(repoPath, ".github", "workflows"), { recursive: true })
+          await cp(releaseTemplate, join(repoPath, ".github", "workflows", "release.yml"))
+        }
+      } catch (githubErr) {
+        const msg = githubErr instanceof Error ? githubErr.message : String(githubErr)
+        await job.log(`Cloud backup skipped during setup: ${msg}`)
       }
     }
 
     await job.updateProgress(60)
 
-    if (hasGithub) {
-      const authCloneUrl = await getAuthenticatedCloneUrl(cloneUrl)
-      await initAndPush({
-        repoPath,
-        remoteUrl: authCloneUrl,
-        message: "chore: scaffold storefront",
-      })
-      await protectMainBranch(getRepoName(projectId))
+    const githubReady = hasGithub && !!cloneUrl
+    if (githubReady) {
+      try {
+        const authCloneUrl = await getAuthenticatedCloneUrl(cloneUrl)
+        await initAndPush({
+          repoPath,
+          remoteUrl: authCloneUrl,
+          message: "chore: scaffold storefront",
+        })
+        await protectMainBranch(getRepoName(projectId))
+      } catch (githubErr) {
+        const msg = githubErr instanceof Error ? githubErr.message : String(githubErr)
+        await job.log(`Cloud push skipped: ${msg}`)
+        githubRepo = null
+        githubRepoId = null
+        const { prepareRepo } = await import("@mwb/core/git")
+        const git = await prepareRepo(repoPath)
+        await git.init()
+        await git.add(".")
+        await git.commit("chore: scaffold storefront (local)")
+      }
     } else {
       const { prepareRepo } = await import("@mwb/core/git")
       const git = await prepareRepo(repoPath)
@@ -101,7 +143,7 @@ export async function handleScaffold(job: Job<ProjectScaffoldJob>) {
     const draftId = crypto.randomUUID()
     const gitBranch = `draft/${draftId}`
 
-    if (hasGithub) {
+    if (githubReady && githubRepo) {
       await createBranch(repoPath, gitBranch)
       await pushBranch(repoPath, gitBranch)
     }
@@ -165,10 +207,17 @@ export async function handleGitCommit(job: Job<ProjectGitCommitJob>) {
   }
 
   await checkoutBranch(project.workspacePath, draft.gitBranch)
-  const sha = await commitChanges(project.workspacePath, message)
+  let sha = draft.lastCommitSha ?? ""
+  try {
+    sha = await commitChanges(project.workspacePath, message)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!/nothing to commit|no changes added/i.test(msg)) throw err
+    await job.log("No file changes — skipped new save point")
+  }
 
-  const hasGithub = process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY
-  if (hasGithub) {
+  const hasGithub = githubCredentialsConfigured()
+  if (hasGithub && sha) {
     await pushBranch(project.workspacePath, draft.gitBranch)
   }
 
@@ -208,10 +257,15 @@ export async function handlePublish(job: Job<ProjectPublishJob>) {
 
   await checkoutBranch(project.workspacePath, draft.gitBranch)
 
+  const hasGithub = githubCredentialsConfigured()
+  if (hasGithub) {
+    await pushBranch(project.workspacePath, draft.gitBranch)
+  }
+
   if (mergeToMain) {
     await mergeBranch(project.workspacePath, draft.gitBranch, "main")
-    const hasGithub = process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY
-    if (hasGithub) {
+    const hasGithubMerge = githubCredentialsConfigured()
+    if (hasGithubMerge) {
       await pushBranch(project.workspacePath, "main")
     }
   }
@@ -225,8 +279,8 @@ export async function handlePublish(job: Job<ProjectPublishJob>) {
     },
   })
 
-  const hasGithub = process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY
-  if (hasGithub) {
+  const hasGithubTag = githubCredentialsConfigured()
+  if (hasGithubTag) {
     await createTag(project.workspacePath, version, releaseNotes)
   }
 
@@ -323,5 +377,68 @@ export async function handleGithubProvision(job: Job<ProjectGithubProvisionJob>)
     })
     await publishProgress(projectId, { step: "github_error", error: message })
     throw err
+  }
+}
+
+export async function handleLocalRun(job: Job<import("@mwb/core/queue").ProjectLocalRunJob>) {
+  const { projectId, slug, action } = job.data
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } })
+  if (!project.workspacePath) throw new Error("Shop not scaffolded")
+
+  const { setProjectLocalRun, startBackendLocal, startStorefrontLocal, stopShopLocal } =
+    await import("@mwb/core/shops")
+
+  const pickUpMessage =
+    action === "start"
+      ? "Worker picked up backend start job…"
+      : action === "start-storefront"
+        ? "Worker picked up storefront start job…"
+        : "Worker picked up stop job…"
+
+  await setProjectLocalRun(projectId, {
+    slug,
+    status: action === "stop" ? "stopping" : "starting",
+    backendPort: 9000,
+    storefrontPort: 8000,
+    message: pickUpMessage,
+    action,
+    phase: "active",
+    jobId: String(job.id),
+  })
+
+  // Extend BullMQ lock while npm install / health checks run (can take several minutes)
+  const keepAlive = setInterval(() => {
+    void job.updateProgress({ ts: Date.now() }).catch(() => {})
+  }, 20_000)
+
+  try {
+    await publishProgress(projectId, {
+      step:
+        action === "stop"
+          ? "local_stopping"
+          : action === "start-storefront"
+            ? "local_starting_storefront"
+            : "local_starting",
+      progress: 10,
+    })
+
+    const state =
+      action === "start"
+        ? await startBackendLocal(project.workspacePath, slug, projectId)
+        : action === "start-storefront"
+          ? await startStorefrontLocal(project.workspacePath, slug, projectId)
+          : await stopShopLocal(project.workspacePath, slug, projectId)
+
+    await publishProgress(projectId, {
+      step: action === "stop" ? "local_stopped" : "local_status",
+      progress: 100,
+      localRun: state,
+    })
+
+    if ((action === "start" || action === "start-storefront") && state.status === "error") {
+      throw new Error(state.message ?? "Local start failed")
+    }
+  } finally {
+    clearInterval(keepAlive)
   }
 }

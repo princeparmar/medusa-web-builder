@@ -21,7 +21,7 @@ import {
 import { githubCredentialsConfigured } from "@mwb/core/github"
 import { MODULE_LABELS } from "@mwb/registry/providers-catalog"
 import { listProvidersFromDb, getProviderById } from "@mwb/registry/providers-sync"
-import { enrichPluginRecord, hasUpdateAvailable } from "@mwb/registry"
+import { enrichPluginRecord, fetchNpmLatestVersion, resolvePluginLatestVersion } from "@mwb/registry"
 import type { BuilderSettings } from "@mwb/registry/schemas"
 import type { FieldBinding } from "@mwb/core/builder-config/bindings"
 import { z } from "zod"
@@ -54,28 +54,37 @@ export async function GET(
   const registry = await prisma.pluginRegistry.findMany({ orderBy: { displayName: "asc" } })
   const registryByName = new Map(registry.map((p) => [p.packageName, p]))
 
-  const installedPlugins = Object.entries(pluginsConfig.plugins ?? {}).map(([packageName, versionSpec]) => {
-    const reg = registryByName.get(packageName)
-    const installed = parseInstalledVersion(versionSpec) ?? versionSpec
-    const latest = reg?.latestVersion ?? reg?.version ?? installed
-    const enriched = reg ? enrichPluginRecord(reg) : null
-    const schema = reg?.settingsSchemaJson as BuilderSettings | null
-    return {
-      packageName,
-      displayName: reg?.displayName ?? packageName,
-      description: enriched?.description ?? null,
-      category: enriched?.category ?? "custom",
-      versionSpec,
-      installedVersion: installed,
-      registryVersion: reg?.version ?? null,
-      latestVersion: latest,
-      updateAvailable: reg ? hasUpdateAvailable(installed, latest) : false,
-      hasSettings: Boolean(schema?.fields?.length),
-      settingsSchemaJson: schema,
-      options: pluginsConfig.pluginOptions?.[packageName] ?? {},
-      fieldBindings: bindings.plugins[packageName] ?? {},
-    }
-  })
+  const installedPlugins = await Promise.all(
+    Object.entries(pluginsConfig.plugins ?? {}).map(async ([packageName, versionSpec]) => {
+      const reg = registryByName.get(packageName)
+      const installed = parseInstalledVersion(versionSpec) ?? versionSpec
+      const npmLatest = await fetchNpmLatestVersion(packageName)
+      const registryLatest = reg?.latestVersion ?? reg?.version ?? null
+      const { latest, updateAvailable } = resolvePluginLatestVersion(
+        installed,
+        registryLatest,
+        npmLatest
+      )
+      const enriched = reg ? enrichPluginRecord(reg) : null
+      const schema = reg?.settingsSchemaJson as BuilderSettings | null
+      return {
+        packageName,
+        displayName: reg?.displayName ?? packageName,
+        description: enriched?.description ?? null,
+        category: enriched?.category ?? "custom",
+        versionSpec,
+        installedVersion: installed,
+        registryVersion: reg?.version ?? null,
+        latestVersion: latest,
+        npmLatest,
+        updateAvailable,
+        hasSettings: Boolean(schema?.fields?.length),
+        settingsSchemaJson: schema,
+        options: pluginsConfig.pluginOptions?.[packageName] ?? {},
+        fieldBindings: bindings.plugins[packageName] ?? {},
+      }
+    })
+  )
 
   const providerRegistry = await listProvidersFromDb()
   const providersByModule = new Map<string, typeof providerRegistry>()
@@ -111,6 +120,8 @@ export async function GET(
       availableProviders: moduleProviders.map((p) => ({
         providerId: p.providerId,
         displayName: p.displayName,
+        description: p.description ?? "",
+        hasSettings: Boolean(p.settings?.fields?.length),
         requiresPlugin: p.requiresPlugin ?? undefined,
       })),
     }

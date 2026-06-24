@@ -29,7 +29,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: join(dirname(fileURLToPath(import.meta.url)), "../.."),
   outputFileTracingIncludes: {
-    "/*": ["../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/**/*"],
+    "/*": [
+      "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/**/*",
+      "../../node_modules/esbuild/**/*",
+      "../../node_modules/@esbuild/**/*",
+      "../../node_modules/@pradip1995/commerce-core/**/*",
+    ],
   },
   serverExternalPackages: ["@prisma/client", "bcryptjs", "react-dom"],
 }

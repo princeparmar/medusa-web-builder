@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import { prisma } from "@mwb/db"
 import BuilderClient from "@/components/builder/BuilderClient"
+import { getProjectLocalDevStatus, isLocalDevRunning } from "@/lib/project-local-dev"
 
 export default async function BuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -17,6 +18,11 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
 
   if (!membership) notFound()
   if (membership.project.status !== "READY") redirect(`/projects/${id}`)
+
+  const localDev = await getProjectLocalDevStatus(membership.project.workspacePath)
+  if (!isLocalDevRunning(localDev)) {
+    redirect(`/projects/${id}?needsLocalDev=1`)
+  }
 
   return (
     <main style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
