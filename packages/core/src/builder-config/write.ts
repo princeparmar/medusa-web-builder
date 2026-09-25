@@ -27,6 +27,11 @@ export type WriteBuilderArtifactsParams = {
   }>
 }
 
+export type BackendPackageJson = {
+  dependencies?: Record<string, string>
+  [key: string]: unknown
+}
+
 export async function writeBuilderArtifacts(params: WriteBuilderArtifactsParams): Promise<CompiledBuilderConfig> {
   const { repoPath, pages, sectionProps, sections } = params
   const brand = params.brand ?? (await readBrandConfig(repoPath).catch(() => ({})))
@@ -72,7 +77,36 @@ export async function writePluginsConfigFile(
   await writeProjectFile(repoPath, "backend/plugins.config.json", stripDynamicConfigPlugin(config))
 }
 
+export async function readBackendPackageJson(repoPath: string): Promise<BackendPackageJson> {
+  return (await readProjectFile<BackendPackageJson>(repoPath, "backend/package.json")) ?? {}
+}
+
+export async function writeBackendPackageJson(
+  repoPath: string,
+  pkg: BackendPackageJson
+): Promise<void> {
+  await writeProjectFile(repoPath, "backend/package.json", pkg)
+}
+
+export async function updateBackendDependencyVersion(
+  repoPath: string,
+  packageName: string,
+  version: string
+): Promise<string> {
+  const pkg = await readBackendPackageJson(repoPath)
+  const nextVersion = version.startsWith("^") || version.startsWith("~") ? version : `^${version}`
+  pkg.dependencies = { ...(pkg.dependencies ?? {}), [packageName]: nextVersion }
+  await writeBackendPackageJson(repoPath, pkg)
+  return nextVersion
+}
+
 export async function readModulesConfigFile(repoPath: string): Promise<ModulesConfigFile> {
+  const plugins =
+    (await readProjectFile<PluginsConfigFile>(repoPath, "backend/plugins.config.json")) ?? {}
+  if (plugins.modules && typeof plugins.modules === "object") {
+    return plugins.modules
+  }
+  // Legacy separate file (pre framework-compiler 0.6.61)
   return (await readProjectFile<ModulesConfigFile>(repoPath, "backend/modules.config.json")) ?? {}
 }
 
@@ -80,7 +114,12 @@ export async function writeModulesConfigFile(
   repoPath: string,
   config: ModulesConfigFile
 ): Promise<void> {
-  await writeProjectFile(repoPath, "backend/modules.config.json", config)
+  const plugins =
+    (await readProjectFile<PluginsConfigFile>(repoPath, "backend/plugins.config.json")) ?? {}
+  await writeProjectFile(repoPath, "backend/plugins.config.json", stripDynamicConfigPlugin({
+    ...plugins,
+    modules: config,
+  }))
 }
 
 export async function readBindingsFile(repoPath: string): Promise<BuilderBindingsFile> {
@@ -109,6 +148,7 @@ export {
   compileBuilderConfig,
   pluginOptionsFromFieldValues,
   stripDynamicConfigPlugin,
+  listEnabledPlugins,
 } from "../builder-config/index"
 export {
   compileOptionsWithBindings,

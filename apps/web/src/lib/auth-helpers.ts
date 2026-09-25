@@ -1,5 +1,5 @@
 import { auth } from "@/auth"
-import { prisma } from "@mwb/db"
+import { prisma, type AdminRole } from "@mwb/db"
 import { hasPermission, type Permission } from "@mwb/core/rbac"
 import type { ProjectRole } from "@mwb/db"
 import { NextResponse } from "next/server"
@@ -12,18 +12,53 @@ export async function requireAuth() {
   return { error: null, session }
 }
 
+/** Load admin role from DB so revoked admins lose access on the next request. */
+export async function getAdminUser(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      isAdmin: true,
+      adminRole: true,
+    },
+  })
+}
+
 export async function requireAdmin() {
   const { error, session } = await requireAuth()
-  if (error) return { error, session: null }
+  if (error) return { error, session: null, admin: null }
 
-  if (!session!.user.isAdmin) {
+  const admin = await getAdminUser(session!.user.id)
+  if (!admin?.isAdmin || !admin.adminRole) {
     return {
       error: NextResponse.json({ error: "Admin access required" }, { status: 403 }),
       session: null,
+      admin: null,
     }
   }
 
-  return { error: null, session }
+  return { error: null, session, admin }
+}
+
+export async function requireSuperAdmin() {
+  const result = await requireAdmin()
+  if (result.error) return result
+
+  if (result.admin!.adminRole !== "SUPER_ADMIN") {
+    return {
+      error: NextResponse.json({ error: "Super admin access required" }, { status: 403 }),
+      session: null,
+      admin: null,
+    }
+  }
+
+  return result
+}
+
+export function isSuperAdmin(role: AdminRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN"
 }
 
 export async function getProjectMembership(projectId: string, userId: string) {
@@ -66,4 +101,21 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48)
+}
+
+export function parseTags(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input
+      .map((t) => String(t).trim())
+      .filter(Boolean)
+      .slice(0, 32)
+  }
+  if (typeof input === "string") {
+    return input
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 32)
+  }
+  return []
 }

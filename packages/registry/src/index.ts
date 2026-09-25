@@ -33,7 +33,18 @@ export { isLayoutShellPackage, stripLayoutShells } from "./layout-shell"
 export { PLUGIN_CATALOG, PLUGIN_CATEGORY_LABELS } from "./plugins-catalog"
 export { BuilderSettingsSchema } from "./schemas/index"
 export { compareVersions, hasUpdateAvailable, normalizeVersion, pickMaxVersion, resolvePluginLatestVersion } from "./version"
-export { fetchNpmLatestVersion, refreshPluginLatestVersionsFromNpm } from "./npm"
+export {
+  fetchNpmLatestVersion,
+  fetchNpmPackageInfo,
+  assertNpmPackageVersion,
+  refreshPluginLatestVersionsFromNpm,
+} from "./npm"
+export type { NpmPackageInfo, NpmVersionCheckResult } from "./npm"
+export {
+  addCatalogPackageVersion,
+  listCatalogPackageVersions,
+  listCatalogMedia,
+} from "./catalog-versions"
 export { syncPluginsCatalogToDb, syncPluginsFromPath, syncDefaultPlugins, enrichPluginRecord, registerCustomPluginGithubRepo, syncPluginsFromGithub } from "./plugins-sync"
 export {
   syncProvidersCatalogToDb,

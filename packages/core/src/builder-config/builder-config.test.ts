@@ -77,8 +77,21 @@ describe("builder-config", () => {
     })
   })
 
-  it("strips dynamic-config plugin from plugins.config", () => {
+  it("strips dynamic-config plugin from plugins.config array", () => {
     const next = stripDynamicConfigPlugin({
+      plugins: ["medusa-plugin-dynamic-config", "medusa-review-rating"],
+      pluginOptions: {
+        "medusa-plugin-dynamic-config": { configs: {} },
+      },
+    })
+    expect(next.plugins).toEqual(["medusa-review-rating"])
+    expect(next.pluginOptions).toEqual({})
+    expect(next.medusa).toBeUndefined()
+  })
+
+  it("strips dynamic-config plugin from legacy plugins.config map", () => {
+    const next = stripDynamicConfigPlugin({
+      medusa: { "@medusajs/medusa": "2.12.3" },
       plugins: {
         "medusa-plugin-dynamic-config": "^0.0.35",
         "medusa-review-rating": "^0.0.38",
@@ -89,5 +102,6 @@ describe("builder-config", () => {
     })
     expect(next.plugins).toEqual({ "medusa-review-rating": "^0.0.38" })
     expect(next.pluginOptions).toEqual({})
+    expect(next.medusa).toBeUndefined()
   })
 })

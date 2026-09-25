@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth"
+import type { AdminRole } from "@mwb/db"
 
 export const authConfig = {
   trustHost: true,
@@ -11,10 +12,9 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
-      const protectedPaths = ["/dashboard", "/onboarding", "/projects", "/admin"]
-      const isProtected = protectedPaths.some((p) => nextUrl.pathname.startsWith(p))
+      const isAdminArea = nextUrl.pathname.startsWith("/admin")
       const isAdminLogin = nextUrl.pathname === "/admin/login"
-      if (isProtected && !isAdminLogin) return isLoggedIn
+      if (isAdminArea && !isAdminLogin) return isLoggedIn
       return true
     },
     jwt({ token, user, trigger, session }) {
@@ -22,6 +22,7 @@ export const authConfig = {
         token.id = user.id
         token.onboardingStep = (user as { onboardingStep?: string }).onboardingStep
         token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false
+        token.adminRole = (user as { adminRole?: AdminRole | null }).adminRole ?? null
       }
       if (trigger === "update" && session?.onboardingStep) {
         token.onboardingStep = session.onboardingStep
@@ -33,6 +34,7 @@ export const authConfig = {
         session.user.id = token.id as string
         session.user.onboardingStep = token.onboardingStep as string
         session.user.isAdmin = Boolean(token.isAdmin)
+        session.user.adminRole = (token.adminRole as AdminRole | null) ?? null
       }
       return session
     },

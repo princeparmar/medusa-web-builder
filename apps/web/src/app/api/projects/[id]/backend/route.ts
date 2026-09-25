@@ -6,12 +6,15 @@ import { requireProjectAccess } from "@/lib/auth-helpers"
 import {
   readPluginsConfigFile,
   writePluginsConfigFile,
+  readBackendPackageJson,
+  updateBackendDependencyVersion,
   readModulesConfigFile,
   writeModulesConfigFile,
   readBindingsFile,
   writeBindingsFile,
   compileOptionsWithBindings,
   parseInstalledVersion,
+  listEnabledPlugins,
 } from "@mwb/core/builder-config/write"
 import {
   createOrUpdateRepoSecret,
@@ -48,6 +51,8 @@ export async function GET(
 
   const repoPath = resolve(project.workspacePath)
   const pluginsConfig = await readPluginsConfigFile(repoPath)
+  const backendPkg = await readBackendPackageJson(repoPath)
+  const backendDeps = backendPkg.dependencies ?? {}
   const modulesConfig = await readModulesConfigFile(repoPath)
   const bindings = await readBindingsFile(repoPath)
 
@@ -55,8 +60,9 @@ export async function GET(
   const registryByName = new Map(registry.map((p) => [p.packageName, p]))
 
   const installedPlugins = await Promise.all(
-    Object.entries(pluginsConfig.plugins ?? {}).map(async ([packageName, versionSpec]) => {
+    listEnabledPlugins(pluginsConfig).map(async (packageName) => {
       const reg = registryByName.get(packageName)
+      const versionSpec = backendDeps[packageName] ?? ""
       const installed = parseInstalledVersion(versionSpec) ?? versionSpec
       const npmLatest = await fetchNpmLatestVersion(packageName)
       const registryLatest = reg?.latestVersion ?? reg?.version ?? null
@@ -129,7 +135,7 @@ export async function GET(
 
   return NextResponse.json({
     ready: true,
-    medusaVersion: pluginsConfig.medusa ?? null,
+    medusaVersion: backendDeps["@medusajs/medusa"] ?? null,
     installedPlugins,
     modules,
     bindings,
@@ -220,11 +226,12 @@ export async function PATCH(
   const repoPath = resolve(project.workspacePath)
 
   if (body.action === "update-version") {
-    const config = await readPluginsConfigFile(repoPath)
-    const plugins = { ...(config.plugins ?? {}) }
-    plugins[body.packageName] = body.version.startsWith("^") ? body.version : `^${body.version}`
-    await writePluginsConfigFile(repoPath, { ...config, plugins })
-    return NextResponse.json({ ok: true, version: plugins[body.packageName] })
+    const version = await updateBackendDependencyVersion(
+      repoPath,
+      body.packageName,
+      body.version
+    )
+    return NextResponse.json({ ok: true, version })
   }
 
   if (body.action === "save-plugin-options") {

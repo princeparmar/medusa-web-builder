@@ -42,6 +42,21 @@ enum InviteStatus {
   EXPIRED
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum CatalogKind {
+  SECTION
+  PLUGIN
+}
+
+enum CatalogMediaType {
+  IMAGE
+  VIDEO
+}
+
 model User {
   id              String         @id @default(uuid())
   email           String         @unique
@@ -53,6 +68,7 @@ model User {
   emailVerified   DateTime?
   onboardingStep  OnboardingStep @default(REGISTERED)
   isAdmin         Boolean        @default(false)
+  adminRole       AdminRole?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -189,10 +205,12 @@ model SectionRegistry {
   packageName        String   @unique
   displayName        String
   githubRepo         String?
+  homepageUrl        String?
   version            String   @default("0.1.0")
   latestVersion      String?
   componentType      String   @default("segment")
   category           String?
+  tags               String[] @default([])
   description        String?
   manifestJson       Json
   settingsSchemaJson Json?
@@ -225,15 +243,44 @@ model PluginRegistry {
   packageName        String   @unique
   displayName        String
   githubRepo         String?
+  homepageUrl        String?
   version            String
   latestVersion      String?
   description        String?
   category           String?
+  tags               String[] @default([])
   medusaResolve      String
   settingsSchemaJson Json?
   isBuiltin          Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+model CatalogPackageVersion {
+  id         String      @id @default(uuid())
+  kind       CatalogKind
+  registryId String
+  version    String
+  notes      String?
+  createdAt  DateTime    @default(now())
+
+  @@unique([kind, registryId, version])
+  @@index([kind, registryId])
+}
+
+model CatalogMedia {
+  id         String           @id @default(uuid())
+  kind       CatalogKind
+  registryId String
+  type       CatalogMediaType
+  url        String
+  key        String
+  filename   String
+  mimeType   String
+  sizeBytes  Int?
+  createdAt  DateTime         @default(now())
+
+  @@index([kind, registryId])
 }
 
 model ProviderRegistry {

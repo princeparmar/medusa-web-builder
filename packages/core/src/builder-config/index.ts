@@ -192,9 +192,14 @@ export function compileBuilderConfig(params: {
 }
 
 export type PluginsConfigFile = {
-  medusa?: string
-  plugins?: Record<string, string>
+  /** @deprecated Versions live in backend/package.json — ignored by backend-build. */
+  medusa?: Record<string, string> | string
+  /** Enable list: string[] preferred. Legacy Record<name, version|true> still enables by key. */
+  plugins?: string[] | Record<string, string | boolean>
   pluginOptions?: Record<string, Record<string, unknown>>
+  /** Module providers + providerOptions (auth, fulfillment, payment, …). */
+  modules?: ModulesConfigFile
+  /** @deprecated Prefer `plugins` as the enable list. */
   enabled?: string[]
 }
 
@@ -209,11 +214,34 @@ export type ModulesConfigFile = {
 
 const DYNAMIC_CONFIG_PLUGIN = "medusa-plugin-dynamic-config"
 
+/** Normalize plugins enable list from array or legacy map. */
+export function listEnabledPlugins(config: PluginsConfigFile): string[] {
+  const p = config.plugins
+  if (Array.isArray(p)) {
+    return p.filter((name) => typeof name === "string" && name.trim().length > 0)
+  }
+  if (p && typeof p === "object") {
+    return Object.entries(p)
+      .filter(([, val]) => val === true || (typeof val === "string" && val.trim().length > 0))
+      .map(([name]) => name)
+  }
+  if (Array.isArray(config.enabled)) {
+    return config.enabled.filter((name) => typeof name === "string" && name.trim().length > 0)
+  }
+  return []
+}
+
 /** Remove dynamic-config plugin — CMS values live in storefront/builder/*.json instead. */
 export function stripDynamicConfigPlugin(config: PluginsConfigFile): PluginsConfigFile {
-  const next: PluginsConfigFile = { ...config, plugins: { ...config.plugins }, pluginOptions: { ...config.pluginOptions } }
+  const next: PluginsConfigFile = {
+    ...config,
+    pluginOptions: { ...config.pluginOptions },
+  }
 
-  if (next.plugins) {
+  if (Array.isArray(next.plugins)) {
+    next.plugins = next.plugins.filter((p) => p !== DYNAMIC_CONFIG_PLUGIN)
+  } else if (next.plugins) {
+    next.plugins = { ...next.plugins }
     delete next.plugins[DYNAMIC_CONFIG_PLUGIN]
   }
   if (next.enabled) {
@@ -222,6 +250,9 @@ export function stripDynamicConfigPlugin(config: PluginsConfigFile): PluginsConf
   if (next.pluginOptions) {
     delete next.pluginOptions[DYNAMIC_CONFIG_PLUGIN]
   }
+
+  // Drop deprecated version maps when rewriting config
+  delete next.medusa
 
   return next
 }

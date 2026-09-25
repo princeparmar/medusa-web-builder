@@ -142,6 +142,7 @@ export async function syncSectionsFromGithub(
         description: catalog?.description ?? `${componentType} from ${githubRepo}`,
         settingsSchemaJson: settings as object,
         pageTypes: catalog?.pageTypes ?? undefined,
+        // Do not overwrite homepageUrl, tags, or media — those are admin-managed
       },
     })
     count++

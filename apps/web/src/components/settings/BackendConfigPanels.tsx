@@ -181,7 +181,7 @@ export function BackendPluginsPanel({ projectId }: { projectId: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "update-version", packageName, version }),
     })
-    setMessage(res.ok ? `Updated ${packageName} to ^${version}` : "Version update failed")
+    setMessage(res.ok ? `Updated ${packageName} in backend/package.json` : "Version update failed")
     if (res.ok) load()
   }
 
@@ -468,7 +468,7 @@ export function BackendProvidersPanel({ projectId }: { projectId: string }) {
     })
     setSaving(false)
     setMessage(
-      result.ok ? "Saved to backend/modules.config.json" : (result.error ?? "Save failed")
+      result.ok ? "Saved to backend/plugins.config.json → modules" : (result.error ?? "Save failed")
     )
     if (result.ok) load()
     setTimeout(() => setMessage(""), 3000)
@@ -622,7 +622,7 @@ export function BackendProvidersPanel({ projectId }: { projectId: string }) {
             {saving ? "Saving…" : "Save now"}
           </button>
           <p style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.5rem" }}>
-            Changes auto-save to <code>backend/modules.config.json</code>
+            Changes auto-save to <code>backend/plugins.config.json</code> → <code>modules</code>
           </p>
         </>
       )}

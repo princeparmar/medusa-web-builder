@@ -102,7 +102,7 @@ export async function persistProviderOptions(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { ok: false, error: (data as { error?: string }).error ?? "Could not save modules.config.json" }
+    return { ok: false, error: (data as { error?: string }).error ?? "Could not save plugins.config.json modules" }
   }
   return { ok: true }
 }

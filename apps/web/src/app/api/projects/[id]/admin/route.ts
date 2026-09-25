@@ -22,7 +22,7 @@ export async function GET(
 
   const shopPath = resolve(project.workspacePath)
   const credentials = await getShopAdminCredentials(shopPath, project.slug)
-  const local = await getShopLocalStatus(shopPath)
+  const local = await getShopLocalStatus(shopPath, project.id, project.slug)
   const backendLive = local.status === "backend_running" || local.status === "running"
 
   return NextResponse.json({ credentials, backendLive })
@@ -42,7 +42,7 @@ export async function POST(
   }
 
   const shopPath = resolve(project.workspacePath)
-  const local = await getShopLocalStatus(shopPath)
+  const local = await getShopLocalStatus(shopPath, project.id, project.slug)
   const backendLive = local.status === "backend_running" || local.status === "running"
   if (!backendLive) {
     return NextResponse.json({ error: "Start the backend before creating an admin user" }, { status: 400 })

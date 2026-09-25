@@ -172,6 +172,7 @@ export async function syncPluginsCatalogToDb(): Promise<number> {
         medusaResolve: plugin.medusaResolve,
         category: plugin.category,
         settingsSchemaJson: settings as object,
+        // Do not overwrite homepageUrl, tags, or media — those are admin-managed
       },
     })
     count++

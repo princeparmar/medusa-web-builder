@@ -3,8 +3,8 @@ import "./globals.css"
 import { Providers } from "@/components/Providers"
 
 export const metadata: Metadata = {
-  title: "Medusa Web Builder",
-  description: "Drag-and-drop storefront builder for Medusa commerce",
+  title: "VyaparNext Packages",
+  description: "Catalog of published UI components and Medusa backend plugins",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

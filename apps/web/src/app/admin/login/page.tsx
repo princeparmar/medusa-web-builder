@@ -45,7 +45,7 @@ export default function AdminLoginForm() {
     <main className="container" style={{ maxWidth: 420, paddingTop: "4rem" }}>
       <h1 style={{ marginBottom: "0.5rem" }}>Admin sign in</h1>
       <p style={{ color: "var(--muted)", marginBottom: "2rem" }}>
-        Manage section packages and plugins for all shops.
+        Manage UI components, backend plugins, and admin accounts.
       </p>
 
       {error && <div className="alert alert-error">{error}</div>}

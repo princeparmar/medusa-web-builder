@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/ ./packages/
 COPY apps/worker/ ./apps/worker/
+COPY apps/web/scripts/create-admin.ts ./apps/web/scripts/create-admin.ts
 COPY scripts/ ./scripts/
 COPY templates/ ./templates/
 

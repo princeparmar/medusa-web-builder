@@ -2,7 +2,7 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { compare } from "bcryptjs"
-import { prisma } from "@mwb/db"
+import { prisma, type AdminRole } from "@mwb/db"
 import type { DefaultSession } from "next-auth"
 import { authConfig } from "./auth.config"
 
@@ -12,6 +12,7 @@ declare module "next-auth" {
       id: string
       onboardingStep: string
       isAdmin: boolean
+      adminRole: AdminRole | null
     } & DefaultSession["user"]
   }
 }
@@ -43,6 +44,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name,
           onboardingStep: user.onboardingStep,
           isAdmin: user.isAdmin,
+          adminRole: user.adminRole,
         }
       },
     }),

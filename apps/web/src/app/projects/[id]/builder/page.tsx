@@ -19,7 +19,11 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
   if (!membership) notFound()
   if (membership.project.status !== "READY") redirect(`/projects/${id}`)
 
-  const localDev = await getProjectLocalDevStatus(membership.project.workspacePath)
+  const localDev = await getProjectLocalDevStatus(
+    membership.project.workspacePath,
+    membership.project.id,
+    membership.project.slug
+  )
   if (!isLocalDevRunning(localDev)) {
     redirect(`/projects/${id}?needsLocalDev=1`)
   }

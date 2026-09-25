@@ -3,10 +3,12 @@ import { resolve } from "path"
 import { getShopLocalStatus, type LocalRunState } from "@mwb/core/shops"
 
 export async function getProjectLocalDevStatus(
-  workspacePath: string | null | undefined
+  workspacePath: string | null | undefined,
+  projectId: string,
+  slug?: string
 ): Promise<LocalRunState | null> {
   if (!workspacePath || !existsSync(workspacePath)) return null
-  return getShopLocalStatus(resolve(workspacePath))
+  return getShopLocalStatus(resolve(workspacePath), projectId, slug)
 }
 
 export function isLocalDevRunning(state: LocalRunState | null | undefined): boolean {

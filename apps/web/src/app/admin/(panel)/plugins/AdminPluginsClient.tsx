@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { AdminRegistryFilters, matchesSearch } from "@/components/admin/AdminRegistryFilters"
+import { CatalogMediaPanel, type CatalogMediaItem } from "@/components/admin/CatalogMediaPanel"
+import { CatalogVersionsPanel, type CatalogVersionItem } from "@/components/admin/CatalogVersionsPanel"
 
 type SettingsField = {
   id: string
@@ -28,17 +30,23 @@ type Plugin = {
   latestVersion: string | null
   medusaResolve: string
   category: string | null
-  isBuiltin: boolean
+  tags: string[]
+  homepageUrl: string | null
   githubRepo: string | null
+  isBuiltin: boolean
   settingsSchemaJson: SettingsSchema | null
+  versions?: CatalogVersionItem[]
+  media?: CatalogMediaItem[]
 }
 
 type EditForm = {
   displayName: string
   description: string
-  version: string
   medusaResolve: string
   category: string
+  homepageUrl: string
+  githubRepo: string
+  tags: string
   settingsJson: string
 }
 
@@ -49,6 +57,9 @@ const emptyForm = {
   version: "0.1.0",
   medusaResolve: "",
   category: "catalog",
+  homepageUrl: "",
+  githubRepo: "",
+  tags: "",
   settingsJson: '{\n  "version": "1",\n  "fields": []\n}',
 }
 
@@ -73,7 +84,7 @@ export default function AdminPluginsClient() {
   const [editing, setEditing] = useState<Plugin | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
-  const [upgradingId, setUpgradingId] = useState<string | null>(null)
+  const [addingVersionId, setAddingVersionId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [sourceFilter, setSourceFilter] = useState("all")
@@ -127,6 +138,9 @@ export default function AdminPluginsClient() {
         version: form.version,
         medusaResolve: form.medusaResolve || form.packageName,
         category: form.category,
+        homepageUrl: form.homepageUrl || undefined,
+        githubRepo: form.githubRepo || undefined,
+        tags: form.tags,
         settingsSchemaJson,
       }),
     })
@@ -156,9 +170,11 @@ export default function AdminPluginsClient() {
     setEditForm({
       displayName: plugin.displayName,
       description: plugin.description ?? "",
-      version: plugin.version,
       medusaResolve: plugin.medusaResolve,
       category: plugin.category ?? "custom",
+      homepageUrl: plugin.homepageUrl ?? "",
+      githubRepo: plugin.githubRepo ?? "",
+      tags: (plugin.tags ?? []).join(", "),
       settingsJson: formatSettingsJson(plugin.settingsSchemaJson),
     })
     setExpandedId(plugin.id)
@@ -187,9 +203,11 @@ export default function AdminPluginsClient() {
       body: JSON.stringify({
         displayName: editForm.displayName,
         description: editForm.description || null,
-        version: editForm.version,
         medusaResolve: editForm.medusaResolve,
         category: editForm.category,
+        homepageUrl: editForm.homepageUrl || null,
+        githubRepo: editForm.githubRepo || null,
+        tags: editForm.tags,
         settingsSchemaJson,
       }),
     })
@@ -207,27 +225,20 @@ export default function AdminPluginsClient() {
     await load()
   }
 
-  async function upgradeVersion(plugin: Plugin) {
-    const suggested = plugin.latestVersion && plugin.latestVersion !== plugin.version
-      ? plugin.latestVersion
-      : plugin.version
-    const next = window.prompt(`New version for "${plugin.displayName}"`, suggested)
-    if (!next?.trim() || next.trim() === plugin.version) return
-
-    setUpgradingId(plugin.id)
+  async function addVersion(pluginId: string, version: string, notes?: string) {
+    setAddingVersionId(pluginId)
     setError("")
-    const res = await fetch(`/api/admin/plugins/${plugin.id}`, {
-      method: "PATCH",
+    const res = await fetch(`/api/admin/plugins/${pluginId}/versions`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: next.trim(), latestVersion: next.trim() }),
+      body: JSON.stringify({ version, notes }),
     })
-    setUpgradingId(null)
+    const data = await res.json().catch(() => ({}))
+    setAddingVersionId(null)
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setError(data.error ?? "Could not update version")
-      return
+      throw new Error(data.error ?? "Could not add version")
     }
-    setMessage(`Updated ${plugin.displayName} to v${next.trim()}`)
+    setMessage(`Registered version ${version}`)
     await load()
   }
 
@@ -248,6 +259,9 @@ export default function AdminPluginsClient() {
         p.medusaResolve,
         categoryLabel,
         settingsText,
+        ...(p.tags ?? []),
+        p.githubRepo,
+        p.homepageUrl,
       ])
     })
   }, [plugins, categoryFilter, sourceFilter, requiredFilter, search, categories])
@@ -285,7 +299,7 @@ export default function AdminPluginsClient() {
         <div>
           <h1 style={{ marginBottom: "0.25rem" }}>Backend plugins</h1>
           <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>
-            Register Medusa plugins that shop owners can enable and configure.
+            Register published npm Medusa plugins. Version must exist on npm.
           </p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={seedCatalog} disabled={seeding}>
@@ -301,7 +315,7 @@ export default function AdminPluginsClient() {
         <form onSubmit={submit}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <div className="form-group">
-              <label>Package name</label>
+              <label>Package name (npm)</label>
               <input
                 value={form.packageName}
                 onChange={(e) => setForm((f) => ({ ...f, packageName: e.target.value }))}
@@ -319,8 +333,12 @@ export default function AdminPluginsClient() {
               />
             </div>
             <div className="form-group">
-              <label>Version</label>
-              <input value={form.version} onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))} />
+              <label>Version (published on npm)</label>
+              <input
+                value={form.version}
+                onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
+                required
+              />
             </div>
             <div className="form-group">
               <label>Medusa resolve key</label>
@@ -330,7 +348,23 @@ export default function AdminPluginsClient() {
                 placeholder="Same as package name if empty"
               />
             </div>
-            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <div className="form-group">
+              <label>Homepage link</label>
+              <input
+                value={form.homepageUrl}
+                onChange={(e) => setForm((f) => ({ ...f, homepageUrl: e.target.value }))}
+                placeholder="https://…"
+              />
+            </div>
+            <div className="form-group">
+              <label>GitHub URL</label>
+              <input
+                value={form.githubRepo}
+                onChange={(e) => setForm((f) => ({ ...f, githubRepo: e.target.value }))}
+                placeholder="https://github.com/org/repo"
+              />
+            </div>
+            <div className="form-group">
               <label>Category</label>
               <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
                 {Object.entries(categories).map(([key, label]) => (
@@ -338,7 +372,16 @@ export default function AdminPluginsClient() {
                     {label}
                   </option>
                 ))}
+                <option value="custom">Custom</option>
               </select>
+            </div>
+            <div className="form-group">
+              <label>Tags (comma-separated)</label>
+              <input
+                value={form.tags}
+                onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+                placeholder="shipping, india"
+              />
             </div>
           </div>
           <div className="form-group">
@@ -448,6 +491,7 @@ export default function AdminPluginsClient() {
                       <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.25rem" }}>
                         {categories[p.category ?? "custom"] ?? p.category}
                         {required.length > 0 ? ` · ${required.length} required field(s)` : ""}
+                        {(p.tags ?? []).length > 0 ? ` · tags: ${p.tags.join(", ")}` : ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -471,15 +515,6 @@ export default function AdminPluginsClient() {
                         type="button"
                         className="btn btn-secondary"
                         style={{ fontSize: "0.75rem" }}
-                        onClick={() => upgradeVersion(p)}
-                        disabled={upgradingId === p.id}
-                      >
-                        {upgradingId === p.id ? "…" : "Upgrade version"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: "0.75rem" }}
                         onClick={() => removePlugin(p.id, p.displayName)}
                       >
                         Remove
@@ -488,7 +523,13 @@ export default function AdminPluginsClient() {
                   </div>
 
                   {isExpanded && !isEditing && (
-                    <PluginDetails plugin={p} categories={categories} />
+                    <PluginDetails
+                      plugin={p}
+                      categories={categories}
+                      addingVersion={addingVersionId === p.id}
+                      onAddVersion={(version, notes) => addVersion(p.id, version, notes)}
+                      onMediaChanged={load}
+                    />
                   )}
 
                   {isEditing && editForm && (
@@ -504,17 +545,24 @@ export default function AdminPluginsClient() {
                           />
                         </div>
                         <div className="form-group">
-                          <label>Version</label>
-                          <input
-                            value={editForm.version}
-                            onChange={(e) => setEditForm((f) => f && { ...f, version: e.target.value })}
-                          />
-                        </div>
-                        <div className="form-group">
                           <label>Medusa resolve key</label>
                           <input
                             value={editForm.medusaResolve}
                             onChange={(e) => setEditForm((f) => f && { ...f, medusaResolve: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Homepage link</label>
+                          <input
+                            value={editForm.homepageUrl}
+                            onChange={(e) => setEditForm((f) => f && { ...f, homepageUrl: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>GitHub URL</label>
+                          <input
+                            value={editForm.githubRepo}
+                            onChange={(e) => setEditForm((f) => f && { ...f, githubRepo: e.target.value })}
                           />
                         </div>
                         <div className="form-group">
@@ -528,7 +576,15 @@ export default function AdminPluginsClient() {
                                 {label}
                               </option>
                             ))}
+                            <option value="custom">Custom</option>
                           </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Tags</label>
+                          <input
+                            value={editForm.tags}
+                            onChange={(e) => setEditForm((f) => f && { ...f, tags: e.target.value })}
+                          />
                         </div>
                       </div>
                       <div className="form-group">
@@ -574,7 +630,19 @@ export default function AdminPluginsClient() {
   )
 }
 
-function PluginDetails({ plugin, categories }: { plugin: Plugin; categories: Record<string, string> }) {
+function PluginDetails({
+  plugin,
+  categories,
+  addingVersion,
+  onAddVersion,
+  onMediaChanged,
+}: {
+  plugin: Plugin
+  categories: Record<string, string>
+  addingVersion: boolean
+  onAddVersion: (version: string, notes?: string) => Promise<void>
+  onMediaChanged: () => Promise<void> | void
+}) {
   const schema = plugin.settingsSchemaJson
   const required = requiredFields(schema)
   const allFields = schema?.fields ?? []
@@ -594,12 +662,25 @@ function PluginDetails({ plugin, categories }: { plugin: Plugin; categories: Rec
         <dd style={{ margin: 0, wordBreak: "break-all" }}>{plugin.packageName}</dd>
         <dt style={{ color: "var(--muted)" }}>Resolve key</dt>
         <dd style={{ margin: 0 }}>{plugin.medusaResolve}</dd>
-        <dt style={{ color: "var(--muted)" }}>Version</dt>
+        <dt style={{ color: "var(--muted)" }}>Homepage</dt>
         <dd style={{ margin: 0 }}>
-          v{plugin.version}
-          {plugin.latestVersion && plugin.latestVersion !== plugin.version
-            ? ` (latest registered: v${plugin.latestVersion})`
-            : ""}
+          {plugin.homepageUrl ? (
+            <a href={plugin.homepageUrl} target="_blank" rel="noreferrer">
+              {plugin.homepageUrl}
+            </a>
+          ) : (
+            "—"
+          )}
+        </dd>
+        <dt style={{ color: "var(--muted)" }}>GitHub</dt>
+        <dd style={{ margin: 0 }}>
+          {plugin.githubRepo ? (
+            <a href={plugin.githubRepo} target="_blank" rel="noreferrer">
+              {plugin.githubRepo}
+            </a>
+          ) : (
+            "—"
+          )}
         </dd>
         <dt style={{ color: "var(--muted)" }}>Category</dt>
         <dd style={{ margin: 0 }}>{categories[plugin.category ?? "custom"] ?? plugin.category ?? "—"}</dd>
@@ -607,8 +688,23 @@ function PluginDetails({ plugin, categories }: { plugin: Plugin; categories: Rec
         <dd style={{ margin: 0 }}>{plugin.isBuiltin ? "Starter catalog" : "Added manually"}</dd>
       </dl>
 
+      <CatalogVersionsPanel
+        versions={plugin.versions ?? []}
+        pinnedVersion={plugin.version}
+        latestVersion={plugin.latestVersion}
+        adding={addingVersion}
+        onAddVersion={onAddVersion}
+      />
+
+      <CatalogMediaPanel
+        kind="PLUGIN"
+        registryId={plugin.id}
+        media={plugin.media ?? []}
+        onChanged={onMediaChanged}
+      />
+
       {required.length > 0 && (
-        <div style={{ marginBottom: "1rem" }}>
+        <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
           <h4 style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--muted)", marginBottom: "0.5rem" }}>
             Required configuration fields
           </h4>

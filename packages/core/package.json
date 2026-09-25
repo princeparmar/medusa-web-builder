@@ -22,9 +22,11 @@
     "./builder-config/bindings": "./src/builder-config/bindings.ts",
     "./builder-config/preview-merge": "./src/builder-config/preview-merge.ts",
     "./builder-config/segment-props": "./src/builder-config/segment-props.ts",
-    "./shops": "./src/shops/index.ts"
+    "./shops": "./src/shops/index.ts",
+    "./catalog-s3": "./src/catalog-s3/index.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1139.0",
     "@mwb/db": "workspace:*",
     "@octokit/auth-app": "^7.1.4",
     "@octokit/rest": "^21.1.0",
