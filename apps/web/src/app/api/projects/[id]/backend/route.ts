@@ -86,7 +86,12 @@ export async function GET(
         updateAvailable,
         hasSettings: Boolean(schema?.fields?.length),
         settingsSchemaJson: schema,
-        options: pluginsConfig.pluginOptions?.[packageName] ?? {},
+        options: pluginsConfig.plugins?.find(
+          (p) =>
+            p.resolve === packageName ||
+            p.resolve.startsWith(`${packageName}/`) ||
+            (packageName === "medusa-analytics" && p.resolve.includes("medusa-analytics"))
+        )?.options ?? {},
         fieldBindings: bindings.plugins[packageName] ?? {},
       }
     })
@@ -100,14 +105,17 @@ export async function GET(
   }
 
   const modules = ["auth", "fulfillment", "payment", "notification", "file"].map((moduleKey) => {
-    const mod = modulesConfig[moduleKey as keyof typeof modulesConfig] as
-      | { providers?: string[]; enabled?: string | boolean; mode?: string }
+    const mod = modulesConfig[moduleKey] as
+      | { providers?: Array<{ id: string; options?: Record<string, unknown> }>; enabled?: string | boolean; mode?: string }
       | undefined
-    const selectedProviders = mod?.providers ?? []
+    const selectedProviders = (mod?.providers ?? []).map((p) => (typeof p === "string" ? p : p.id))
     const moduleProviders = providersByModule.get(moduleKey) ?? []
     const providers = selectedProviders.map((providerId) => {
       const reg = moduleProviders.find((p) => p.providerId === providerId)
-      const options = modulesConfig.providerOptions?.[providerId] ?? {}
+      const entry = (mod?.providers ?? []).find(
+        (p) => typeof p === "object" && p.id === providerId
+      ) as { options?: Record<string, unknown> } | undefined
+      const options = entry?.options ?? {}
       return {
         module: moduleKey,
         providerId,
@@ -243,16 +251,24 @@ export async function PATCH(
     const compiled = compileOptionsWithBindings(body.values, body.bindings, fields)
 
     const config = await readPluginsConfigFile(repoPath)
-    const pluginOptions = { ...(config.pluginOptions ?? {}) }
-    pluginOptions[body.packageName] = compiled
-    if (plugin.medusaResolve !== body.packageName) {
-      pluginOptions[plugin.medusaResolve] = compiled
+    const plugins = [...(config.plugins ?? [])]
+    const idx = plugins.findIndex(
+      (p) =>
+        p.resolve === body.packageName ||
+        p.resolve === plugin.medusaResolve ||
+        p.resolve.startsWith(`${body.packageName}/`) ||
+        (body.packageName === "medusa-analytics" && p.resolve.includes("medusa-analytics"))
+    )
+    if (idx >= 0) {
+      plugins[idx] = { ...plugins[idx], options: compiled }
+    } else {
+      plugins.push({ resolve: plugin.medusaResolve || body.packageName, options: compiled })
     }
 
     const bindingsFile = await readBindingsFile(repoPath)
     bindingsFile.plugins[body.packageName] = body.bindings
     await writeBindingsFile(repoPath, bindingsFile)
-    await writePluginsConfigFile(repoPath, { ...config, pluginOptions })
+    await writePluginsConfigFile(repoPath, { ...config, plugins })
 
     if (body.syncGithub && project.githubRepo) {
       await syncBindingsToGithub(project.githubRepo, body.bindings, body.values)
@@ -263,9 +279,16 @@ export async function PATCH(
 
   if (body.action === "save-module") {
     const modulesConfig = await readModulesConfigFile(repoPath)
-    const key = body.module as keyof typeof modulesConfig
-    const current = (modulesConfig[key] as { providers?: string[] }) ?? {}
-    const next = { ...modulesConfig, [key]: { ...current, providers: body.providers } }
+    const key = body.module
+    const current = modulesConfig[key] ?? { providers: [] }
+    const existing = current.providers ?? []
+    const nextProviders = body.providers
+      .map((id) => existing.find((p) => p.id === id))
+      .filter(Boolean)
+    const next = {
+      ...modulesConfig,
+      [key]: { ...current, providers: nextProviders },
+    }
     await writeModulesConfigFile(repoPath, next)
     return NextResponse.json({ ok: true, providers: body.providers })
   }
@@ -276,13 +299,18 @@ export async function PATCH(
     const compiled = compileOptionsWithBindings(body.values, body.bindings, fields)
 
     const modulesConfig = await readModulesConfigFile(repoPath)
-    const providerOptions = { ...(modulesConfig.providerOptions ?? {}) }
-    providerOptions[body.providerId] = compiled
+    for (const mod of Object.values(modulesConfig)) {
+      if (!mod?.providers) continue
+      const provider = mod.providers.find((p) => p.id === body.providerId)
+      if (provider) {
+        provider.options = compiled
+      }
+    }
 
     const bindingsFile = await readBindingsFile(repoPath)
     bindingsFile.providers[body.providerId] = body.bindings
     await writeBindingsFile(repoPath, bindingsFile)
-    await writeModulesConfigFile(repoPath, { ...modulesConfig, providerOptions })
+    await writeModulesConfigFile(repoPath, modulesConfig)
 
     if (body.syncGithub && project.githubRepo) {
       await syncBindingsToGithub(project.githubRepo, body.bindings, body.values)

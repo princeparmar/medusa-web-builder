@@ -191,69 +191,79 @@ export function compileBuilderConfig(params: {
   }
 }
 
-export type PluginsConfigFile = {
-  /** @deprecated Versions live in backend/package.json — ignored by backend-build. */
-  medusa?: Record<string, string> | string
-  /** Enable list: string[] preferred. Legacy Record<name, version|true> still enables by key. */
-  plugins?: string[] | Record<string, string | boolean>
-  pluginOptions?: Record<string, Record<string, unknown>>
-  /** Module providers + providerOptions (auth, fulfillment, payment, …). */
-  modules?: ModulesConfigFile
-  /** @deprecated Prefer `plugins` as the enable list. */
-  enabled?: string[]
+export type PluginConfigEntry = {
+  resolve: string
+  resolveKind?: "expr"
+  options?: Record<string, unknown>
 }
 
-export type ModulesConfigFile = {
-  auth?: { providers?: string[] }
-  fulfillment?: { providers?: string[] }
-  payment?: { enabled?: string | boolean; providers?: string[] }
-  notification?: { enabled?: string | boolean; providers?: string[] }
-  file?: { mode?: string; providers?: string[] }
-  providerOptions?: Record<string, Record<string, unknown>>
+export type ModuleProviderEntry = {
+  resolve: string
+  id: string
+  options?: Record<string, unknown>
+  envGate?: string
+  package?: string
 }
+
+export type ModuleConfigEntry = {
+  resolve?: string
+  medusaKey?: string
+  dependencies?: string[]
+  enabled?: string | boolean
+  mode?: string
+  moduleEnvGate?: string
+  options?: Record<string, unknown>
+  providers?: ModuleProviderEntry[]
+}
+
+export type PluginsConfigFile = {
+  plugins?: PluginConfigEntry[]
+  modules?: Record<string, ModuleConfigEntry>
+}
+
+/** @deprecated use ModuleConfigEntry / modules in plugins.config */
+export type ModulesConfigFile = Record<string, ModuleConfigEntry>
 
 const DYNAMIC_CONFIG_PLUGIN = "medusa-plugin-dynamic-config"
 
-/** Normalize plugins enable list from array or legacy map. */
+function packageNameFromResolve(resolve: string): string {
+  if (resolve.includes("medusa-analytics")) return "medusa-analytics"
+  if (resolve.startsWith("@")) {
+    return resolve.split("/").slice(0, 2).join("/")
+  }
+  return resolve.split("/")[0] || resolve
+}
+
+/** Package names from plugins[].resolve */
 export function listEnabledPlugins(config: PluginsConfigFile): string[] {
   const p = config.plugins
-  if (Array.isArray(p)) {
-    return p.filter((name) => typeof name === "string" && name.trim().length > 0)
+  if (!Array.isArray(p)) return []
+  const names: string[] = []
+  for (const entry of p) {
+    if (!entry || typeof entry !== "object" || typeof entry.resolve !== "string") continue
+    names.push(packageNameFromResolve(entry.resolve))
   }
-  if (p && typeof p === "object") {
-    return Object.entries(p)
-      .filter(([, val]) => val === true || (typeof val === "string" && val.trim().length > 0))
-      .map(([name]) => name)
-  }
-  if (Array.isArray(config.enabled)) {
-    return config.enabled.filter((name) => typeof name === "string" && name.trim().length > 0)
-  }
-  return []
+  return names
+}
+
+export function findPluginEntry(
+  config: PluginsConfigFile,
+  packageName: string
+): PluginConfigEntry | undefined {
+  return (config.plugins || []).find(
+    (p) => p && packageNameFromResolve(p.resolve) === packageName
+  )
 }
 
 /** Remove dynamic-config plugin — CMS values live in storefront/builder/*.json instead. */
 export function stripDynamicConfigPlugin(config: PluginsConfigFile): PluginsConfigFile {
   const next: PluginsConfigFile = {
     ...config,
-    pluginOptions: { ...config.pluginOptions },
+    plugins: [...(config.plugins || [])],
   }
-
-  if (Array.isArray(next.plugins)) {
-    next.plugins = next.plugins.filter((p) => p !== DYNAMIC_CONFIG_PLUGIN)
-  } else if (next.plugins) {
-    next.plugins = { ...next.plugins }
-    delete next.plugins[DYNAMIC_CONFIG_PLUGIN]
-  }
-  if (next.enabled) {
-    next.enabled = next.enabled.filter((p) => p !== DYNAMIC_CONFIG_PLUGIN)
-  }
-  if (next.pluginOptions) {
-    delete next.pluginOptions[DYNAMIC_CONFIG_PLUGIN]
-  }
-
-  // Drop deprecated version maps when rewriting config
-  delete next.medusa
-
+  next.plugins = (next.plugins || []).filter(
+    (p) => packageNameFromResolve(p.resolve) !== DYNAMIC_CONFIG_PLUGIN
+  )
   return next
 }
 
