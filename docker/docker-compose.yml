@@ -54,7 +54,7 @@ services:
 
   # Local stand-in for k8s/deploy-agent.yaml (receives deploy queue webhook POSTs)
   deploy-stub:
-    image: node:20-alpine
+    image: public.ecr.aws/docker/library/node:20-alpine
     restart: unless-stopped
     working_dir: /app
     volumes:
