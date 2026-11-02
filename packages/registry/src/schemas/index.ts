@@ -42,12 +42,18 @@ export const BuilderSettingsSchema = z.object({
 
 /** Declares a Medusa module provider shipped with a plugin package */
 const ProviderSettingsEntrySchema = z.object({
-  module: z.enum(["auth", "fulfillment", "payment", "notification", "file"]),
+  module: z.string().min(1),
   providerId: z.string(),
   displayName: z.string(),
   description: z.string().optional(),
   requiresPlugin: z.string().optional(),
   medusaResolve: z.string().optional(),
+  /** Where this provider is used in store settings (defaults from `module`). */
+  settingsGroup: z.string().min(1).optional(),
+  /** Notification channels this provider claims (sms, email, push, …). */
+  channels: z.array(z.string().min(1)).optional(),
+  /** Extra plugin packages to install with this provider. */
+  companionPackages: z.array(z.string().min(1)).optional(),
   settings: BuilderSettingsSchema,
 })
 
